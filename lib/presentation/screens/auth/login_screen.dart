@@ -1,8 +1,12 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:app_gobiernoti/data/services/biometric_service.dart';
+import 'package:app_gobiernoti/presentation/screens/auth/register_screen.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/animations/fade_in_animation.dart';
+import 'package:local_auth/local_auth.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,30 +16,61 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _emailController = TextEditingController(text: 'ciso@company.com');
-  final _passwordController = TextEditingController(text: 'password');
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  final BiometricService _biometricService = BiometricService();
+
+  Future<void> _loginWithBiometrics() async {
+    final List<BiometricType> availableBiometrics =
+    await _biometricService.getAvailableBiometrics();
+
+    if (kDebugMode) {
+      print("Biométricos disponibles: $availableBiometrics");
+    }
+
+    if (availableBiometrics.isEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se encontró un sensor biométrico compatible.')),
+      );
+      return;
+    }
+
+    String reason = 'Usa tu biometría para iniciar sesión';
+    if (availableBiometrics.contains(BiometricType.face)) {
+      reason = 'Usa tu rostro para iniciar sesión';
+    } else if (availableBiometrics.contains(BiometricType.fingerprint)) {
+      reason = 'Usa tu huella para iniciar sesión';
+    }
+
+    try {
+      final isAuthenticated = await _biometricService.authenticate(reason);
+
+      if (isAuthenticated && mounted) {
+        Provider.of<AuthProvider>(context, listen: false)
+            .login('biometric@user.com', 'password');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print("Error durante la autenticación: $e");
+      }
+    }
+  }
 
   Future<void> _login() async {
-    // Ocultar el teclado si está abierto
-    FocusScope.of(context).unfocus(); 
+    FocusScope.of(context).unfocus();
 
     if (!_formKey.currentState!.validate()) return;
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    // El resultado del login ahora se maneja por el estado de errorMessage en AuthProvider
     await authProvider.login(
       _emailController.text,
       _passwordController.text,
     );
-    
-    // La navegación basada en isAuthenticated la manejará el widget raíz (ej: main.dart)
-    // o un listener específico en LoginScreen si se quisiera mantener aquí.
   }
 
   @override
   Widget build(BuildContext context) {
-    // Usamos Consumer para reconstruir solo las partes necesarias cuando AuthProvider cambia.
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Center(
@@ -75,8 +110,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   delay: 1.1,
                   child: TextFormField(
                     controller: _emailController,
-                    decoration:
-                    const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined)),
+                    decoration: const InputDecoration(
+                        labelText: 'Email',
+                        prefixIcon: Icon(Icons.email_outlined)),
                     keyboardType: TextInputType.emailAddress,
                     validator: (value) => (value?.isEmpty ?? true)
                         ? 'Por favor ingrese un email'
@@ -89,51 +125,77 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: TextFormField(
                     controller: _passwordController,
                     decoration: const InputDecoration(
-                        labelText: 'Contraseña', prefixIcon: Icon(Icons.lock_outline)),
+                        labelText: 'Contraseña',
+                        prefixIcon: Icon(Icons.lock_outline)),
                     obscureText: true,
                     validator: (value) => (value?.isEmpty ?? true)
                         ? 'Por favor ingrese una contraseña'
                         : null,
                   ),
                 ),
-                // Widget para mostrar el mensaje de error
                 Consumer<AuthProvider>(
                   builder: (context, auth, child) {
                     if (auth.errorMessage != null && !auth.isLoading) {
                       return FadeInAnimation(
-                        delay: 1.4, // Ajusta si es necesario
+                        delay: 1.4,
                         child: Padding(
-                          padding: const EdgeInsets.only(top: 20.0, bottom: 0), // Ajusta el padding
+                          padding:
+                          const EdgeInsets.only(top: 20.0, bottom: 0),
                           child: Text(
                             auth.errorMessage!,
-                            style: const TextStyle(color: Colors.red, fontSize: 14),
+                            style: const TextStyle(
+                                color: Colors.red, fontSize: 14),
                             textAlign: TextAlign.center,
                           ),
                         ),
                       );
                     }
-                    return const SizedBox(height: 0); // No ocupa espacio si no hay error
+                    return const SizedBox(height: 0);
                   },
                 ),
                 const SizedBox(height: 30),
                 FadeInAnimation(
                   delay: 1.5,
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: Consumer<AuthProvider>(
-                       builder: (context, auth, child) {
-                        return ElevatedButton(
-                          onPressed: auth.isLoading ? null : _login,
-                          child: auth.isLoading
-                              ? const SizedBox(
-                                  width: 20, 
-                                  height: 20, 
-                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)
-                                )
-                              : const Text('Iniciar Sesión'),
-                        );
-                       }
-                    ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Consumer<AuthProvider>(
+                            builder: (context, auth, child) {
+                              return ElevatedButton(
+                                onPressed: auth.isLoading ? null : _login,
+                                child: auth.isLoading
+                                    ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                        color: Colors.white, strokeWidth: 3))
+                                    : const Text('Iniciar Sesión'),
+                              );
+                            }),
+                      ),
+                      const SizedBox(width: 16),
+                      // ▼▼▼ ÍCONO CAMBIADO AQUÍ ▼▼▼
+                      IconButton(
+                        onPressed: _loginWithBiometrics,
+                        icon: const Icon(Icons.fingerprint, size: 30),
+                        color: AppColors.primary,
+                        tooltip: 'Iniciar con biometría',
+                      ),
+                      // ▲▲▲ FIN DEL CAMBIO ▲▲▲
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                FadeInAnimation(
+                  delay: 1.7,
+                  child: TextButton(
+                    onPressed: () {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const RegisterScreen(),
+                      ));
+                    },
+                    child:
+                    const Text('¿No tienes una cuenta? Regístrate aquí'),
                   ),
                 ),
               ],

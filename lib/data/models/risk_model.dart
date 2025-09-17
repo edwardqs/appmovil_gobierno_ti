@@ -44,17 +44,14 @@ class Risk {
 // Devuelve un color asociado al nivel de riesgo para la UI
   Color get riskColor {
     switch (riskLevel) {
-      case 'Critico':
-      // Correcto: criticalRisk
+    // ▼▼▼ CORRECCIÓN LÓGICA AQUÍ ▼▼▼
+      case 'Crítico':
         return AppColors.criticalRisk;
       case 'Alto':
-      // Correcto: highRisk
         return AppColors.highRisk;
       case 'Medio':
-      // Correcto: mediumRisk
         return AppColors.mediumRisk;
       default:
-      // Correcto: lowRisk
         return AppColors.lowRisk;
     }
   }
@@ -71,4 +68,3 @@ class Risk {
     }
   }
 }
-

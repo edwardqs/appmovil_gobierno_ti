@@ -4,7 +4,8 @@ class AuthService {
   Future<bool> login(String email, String password) async {
     // Simulación: Acepta credenciales específicas para la demo.
     // En una app real, aquí se validaría un token de una API.
-    if (email == 'ciso@company.com' && password == 'password') {
+    final bool isValidEmail = RegExp(r"^[a-zA-Z0-9.]+@[a-zA-Z0-9]+\.[a-zA-Z]+").hasMatch(email);
+    if (isValidEmail && password.isNotEmpty) {
       // Simula un retardo de red para dar una sensación más realista.
       await Future.delayed(const Duration(milliseconds: 1500));
       return true; // Login exitoso
@@ -18,4 +19,3 @@ class AuthService {
     await Future.delayed(const Duration(milliseconds: 500));
   }
 }
-

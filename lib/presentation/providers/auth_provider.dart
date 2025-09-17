@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
 import '../../data/services/auth_service.dart';
+import '../../data/services/audit_service.dart';
 
 // ChangeNotifier notifica a los widgets cuando el estado de la autenticación cambia.
 class AuthProvider with ChangeNotifier {
   final AuthService _authService;
+  final AuditService _auditService = AuditService();
 
   AuthProvider(this._authService);
 
@@ -31,14 +33,17 @@ class AuthProvider with ChangeNotifier {
       if (success) {
         _isAuthenticated = true;
         _errorMessage = null;
+        _auditService.logLoginAttempt(email, success: true);
       } else {
         _isAuthenticated = false;
         // Podrías intentar obtener un mensaje más específico del _authService si lo provee
         _errorMessage = "Email o contraseña incorrectos.";
+        _auditService.logLoginAttempt(email, success: false);
       }
     } catch (e) {
       _isAuthenticated = false;
       _errorMessage = "Ocurrió un error inesperado al intentar iniciar sesión.";
+      _auditService.logLoginAttempt(email, success: false, error: e.toString());
       // Podrías registrar el error 'e' para depuración: print(e);
       success = false;
     }

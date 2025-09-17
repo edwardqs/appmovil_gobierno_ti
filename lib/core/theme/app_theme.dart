@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-// ▼▼▼ LÍNEA AÑADIDA PARA SOLUCIONAR EL ERROR ▼▼▼
 import 'package:google_fonts/google_fonts.dart';
-// ▲▲▲ FIN DE LA LÍNEA AÑADIDA ▲▲▲
 import 'app_colors.dart';
 
 class AppTheme {
@@ -14,7 +12,7 @@ class AppTheme {
       background: AppColors.background,
       error: AppColors.error,
     ),
-    // Se corrigió CardTheme a CardThemeData
+    // ▼▼▼ CORRECCIÓN DEFINITIVA AQUÍ ▼▼▼
     cardTheme: CardThemeData(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -60,4 +58,3 @@ class AppTheme {
     ),
   );
 }
-

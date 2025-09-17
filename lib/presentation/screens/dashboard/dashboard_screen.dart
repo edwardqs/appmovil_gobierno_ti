@@ -3,22 +3,20 @@ import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/risk_provider.dart';
-import '../auth/login_screen.dart';
 import '../risks/create_risk_screen.dart';
 import '../risks/risk_list_screen.dart';
 import '../../widgets/common/kpi_card.dart';
 import '../../widgets/animations/fade_in_animation.dart';
+import '../profile/profile_screen.dart'; // <-- 1. IMPORTAR LA NUEVA PANTALLA
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Escucha al RiskProvider para obtener los datos de los riesgos.
     final riskProvider = Provider.of<RiskProvider>(context);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-    // Cálculos para los KPIs basados en los datos del provider.
     final criticalRisks =
         riskProvider.risks.where((r) => r.inherentRisk >= 20).length;
     final highRisks = riskProvider.risks
@@ -28,11 +26,6 @@ class DashboardScreen extends StatelessWidget {
 
     void _logout() {
       authProvider.logout();
-      // Asegurarse de que no haya pantallas anteriores en el stack.
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-            (route) => false,
-      );
     }
 
     return Scaffold(
@@ -46,6 +39,49 @@ class DashboardScreen extends StatelessWidget {
           ),
         ],
       ),
+      // ▼▼▼ 2. AÑADIR EL DRAWER (MENÚ LATERAL) ▼▼▼
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            UserAccountsDrawerHeader(
+              accountName: const Text(
+                'Carlos Ramirez',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              accountEmail: const Text('ciso@company.com'),
+              currentAccountPicture: const CircleAvatar(
+                backgroundColor: Colors.white,
+                child: Icon(
+                  Icons.person,
+                  size: 40,
+                  color: AppColors.primary,
+                ),
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: const Text('Perfil del Auditor'),
+              onTap: () {
+                Navigator.pop(context); // Cierra el drawer
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const ProfileScreen(),
+                ));
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: const Text('Cerrar Sesión'),
+              onTap: _logout,
+            ),
+          ],
+        ),
+      ),
+      // ▲▲▲ FIN DEL CÓDIGO DEL DRAWER ▲▲▲
       body: riskProvider.isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -131,6 +167,4 @@ class DashboardScreen extends StatelessWidget {
   }
 }
 
-// Enum para pasar filtros a la pantalla de lista de riesgos
 enum RiskStatusFilter { all, critical, high }
-
