@@ -1,3 +1,4 @@
+import 'dart:io'; // Necesario para File
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/risk_model.dart';
@@ -48,6 +49,9 @@ class RiskListItem extends StatelessWidget {
     final riskLevel = _getRiskLevel(risk.inherentRisk);
     final riskStatusText = _getRiskStatusText(risk.status);
 
+    // Determina si hay evidencia (comentarios o imágenes)
+    final bool hasEvidence = (risk.comment?.isNotEmpty ?? false) || risk.imagePaths.isNotEmpty;
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: InkWell(
@@ -76,9 +80,9 @@ class RiskListItem extends StatelessWidget {
                   Text(
                     risk.inherentRisk.toString(),
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          color: riskColor,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      color: riskColor,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),
@@ -100,9 +104,9 @@ class RiskListItem extends StatelessWidget {
                 children: [
                   Container(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: riskColor.withAlpha((255 * 0.1).round()), // Usar withAlpha en lugar de withOpacity
+                      color: riskColor.withAlpha((255 * 0.1).round()),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -116,7 +120,7 @@ class RiskListItem extends StatelessWidget {
                   ),
                   const Spacer(),
                   Text(
-                    riskStatusText, // Usar el helper para obtener el texto del estado
+                    riskStatusText,
                     style: TextStyle(
                       color: risk.status == RiskStatus.open
                           ? AppColors.info
@@ -126,6 +130,54 @@ class RiskListItem extends StatelessWidget {
                   ),
                 ],
               ),
+              // ▼▼▼ INICIO: SECCIÓN DE EVIDENCIA (NUEVO) ▼▼▼
+              if (hasEvidence) ...[
+                const Divider(height: 24),
+                // Comentario
+                if (risk.comment?.isNotEmpty ?? false)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.comment_outlined, size: 16, color: Colors.grey),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          risk.comment!,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                    ],
+                  ),
+                if ((risk.comment?.isNotEmpty ?? false) && risk.imagePaths.isNotEmpty)
+                  const SizedBox(height: 12),
+                // Imágenes
+                if (risk.imagePaths.isNotEmpty)
+                  Row(
+                    children: [
+                      const Icon(Icons.attachment_outlined, size: 16, color: Colors.grey),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Wrap(
+                          spacing: 8.0,
+                          children: risk.imagePaths.map((path) {
+                            return ClipRRect(
+                              borderRadius: BorderRadius.circular(4.0),
+                              child: Image.file(
+                                File(path),
+                                width: 40,
+                                height: 40,
+                                fit: BoxFit.cover,
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+              // ▲▲▲ FIN: SECCIÓN DE EVIDENCIA ▲▲▲
             ],
           ),
         ),

@@ -6,55 +6,54 @@ class RiskProvider with ChangeNotifier {
   final RiskService _riskService;
 
   RiskProvider(this._riskService) {
-    // Carga los riesgos iniciales cuando se crea el provider.
     fetchRisks();
   }
 
-  // Lista privada de riesgos.
   List<Risk> _risks = [];
-  // Getter público para acceder a la lista de riesgos desde la UI.
   List<Risk> get risks => _risks;
 
-  // Estado para manejar si se está cargando la información.
   bool _isLoading = true;
   bool get isLoading => _isLoading;
 
-  // Método para obtener los riesgos desde el servicio.
   Future<void> fetchRisks() async {
     _isLoading = true;
-    notifyListeners(); // Notifica a la UI que empiece a mostrar el loading.
+    notifyListeners();
 
     try {
-      // Llama al servicio para obtener los datos.
       _risks = await _riskService.getRisks();
     } catch (e) {
-      // Manejo de errores (en una app real se podría guardar el error).
       print(e);
     }
 
     _isLoading = false;
-    notifyListeners(); // Notifica a la UI que la carga ha terminado.
+    notifyListeners();
   }
 
-  // Método para añadir un nuevo riesgo.
-  Future<void> addRisk(String title, String asset, int probability, int impact,
-      double controlEffectiveness) async {
-    // Crea una nueva instancia del riesgo con los datos del formulario.
+  // ▼▼▼ MÉTODO CORREGIDO AQUÍ ▼▼▼
+  Future<void> addRisk(
+      String title,
+      String asset,
+      int probability,
+      int impact,
+      double controlEffectiveness,
+      String? comment, // Parámetro añadido
+      List<String> imagePaths, // Parámetro añadido
+      ) async {
     final newRisk = Risk(
-      id: _riskService.generateNewId(), // Genera un ID simulado.
+      id: _riskService.generateNewId(),
       title: title,
       asset: asset,
-      status: RiskStatus.open, // Los nuevos riesgos siempre empiezan abiertos.
+      status: RiskStatus.open,
       probability: probability,
       impact: impact,
       controlEffectiveness: controlEffectiveness,
+      comment: comment, // Dato añadido
+      imagePaths: imagePaths, // Dato añadido
     );
 
-    // Llama al servicio para añadir el riesgo.
     await _riskService.addRisk(newRisk);
 
-    // Notifica a la UI que la lista ha cambiado para que se redibuje.
-    notifyListeners();
+    // Vuelve a cargar los riesgos para incluir el nuevo
+    await fetchRisks();
   }
 }
-

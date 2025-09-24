@@ -1,141 +1,13 @@
 import 'package:flutter/material.dart';
-import '../../../core/theme/app_colors.dart';
+import 'package:provider/provider.dart';
 import '../../../data/models/risk_model.dart';
-import '../dashboard/dashboard_screen.dart'; // Added for RiskStatusFilter
+import '../../providers/risk_provider.dart';
+import '../../widgets/common/risk_list_item.dart';
+import 'risk_detail_screen.dart';
 
-class RiskListItem extends StatelessWidget {
-  final Risk risk;
-  final VoidCallback? onTap;
+// Define el enum aquí para que pueda ser utilizado por otros archivos.
+enum RiskStatusFilter { all, critical, high }
 
-  const RiskListItem({
-    super.key,
-    required this.risk,
-    this.onTap,
-  });
-
-  // Helper para obtener el color basado en el nivel de riesgo.
-  Color _getRiskColor(int inherentRisk) {
-    if (inherentRisk >= 20) return AppColors.error;
-    if (inherentRisk >= 13) return AppColors.warning;
-    if (inherentRisk >= 7) return AppColors.info;
-    return AppColors.success;
-  }
-
-  // Helper para obtener el texto del nivel de riesgo.
-  String _getRiskLevel(int inherentRisk) {
-    if (inherentRisk >= 20) return 'CRÍTICO';
-    if (inherentRisk >= 13) return 'ALTO';
-    if (inherentRisk >= 7) return 'MEDIO';
-    return 'BAJO';
-  }
-
-  // Helper para obtener el texto del estado del riesgo.
-  String _getRiskStatusText(RiskStatus status) {
-    switch (status) {
-      case RiskStatus.open:
-        return 'Abierto';
-      case RiskStatus.closed:
-        return 'Cerrado';
-      case RiskStatus.inProgress:
-        return 'En Progreso';
-      default:
-        return 'Desconocido';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final riskColor = _getRiskColor(risk.inherentRisk);
-    final riskLevel = _getRiskLevel(risk.inherentRisk);
-    final riskStatusText = _getRiskStatusText(risk.status);
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Título del riesgo.
-                  Expanded(
-                    child: Text(
-                      risk.title,
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleLarge
-                          ?.copyWith(fontSize: 18),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  // Puntuación de riesgo inherente.
-                  Text(
-                    risk.inherentRisk.toString(),
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          color: riskColor,
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              // Activo afectado.
-              Row(
-                children: [
-                  const Icon(Icons.computer, size: 16, color: Colors.grey),
-                  const SizedBox(width: 8),
-                  Text(
-                    risk.asset,
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              // Nivel de riesgo y estado.
-              Row(
-                children: [
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: riskColor.withAlpha((255 * 0.1).round()),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      riskLevel,
-                      style: TextStyle(
-                        color: riskColor,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    riskStatusText,
-                    style: TextStyle(
-                      color: risk.status == RiskStatus.open
-                          ? AppColors.info
-                          : AppColors.success,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// Nueva clase RiskListScreen
 class RiskListScreen extends StatelessWidget {
   final RiskStatusFilter filter;
 
@@ -143,32 +15,59 @@ class RiskListScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Aquí deberías obtener la lista de riesgos del RiskProvider
-    // y filtrarla según el 'filter'
-    // Por ahora, es un placeholder:
-    final List<Risk> risks = []; // Reemplazar con datos reales del provider
+    // Escucha los cambios en RiskProvider para obtener la lista de riesgos.
+    final riskProvider = Provider.of<RiskProvider>(context);
+    final allRisks = riskProvider.risks;
 
-    String screenTitle = 'Todos los Riesgos';
-    if (filter == RiskStatusFilter.critical) {
-      screenTitle = 'Riesgos Críticos';
-    } else if (filter == RiskStatusFilter.high) {
-      screenTitle = 'Riesgos Altos';
+    // Lógica para filtrar la lista de riesgos y definir el título de la pantalla.
+    final List<Risk> filteredRisks;
+    final String screenTitle;
+
+    switch (filter) {
+      case RiskStatusFilter.critical:
+        screenTitle = 'Riesgos Críticos';
+        filteredRisks = allRisks.where((r) => r.inherentRisk >= 20).toList();
+        break;
+      case RiskStatusFilter.high:
+        screenTitle = 'Riesgos Altos';
+        filteredRisks = allRisks
+            .where((r) => r.inherentRisk >= 13 && r.inherentRisk < 20)
+            .toList();
+        break;
+      case RiskStatusFilter.all:
+      default:
+        screenTitle = 'Todos los Riesgos';
+        filteredRisks = allRisks;
+        break;
     }
 
     return Scaffold(
       appBar: AppBar(
         title: Text(screenTitle),
       ),
-      body: ListView.builder(
-        itemCount: risks.length, // Usar la lista de riesgos filtrada
+      body: riskProvider.isLoading
+      // Muestra un indicador de carga mientras se obtienen los datos.
+          ? const Center(child: CircularProgressIndicator())
+      // Si no hay riesgos en la lista filtrada, muestra un mensaje.
+          : filteredRisks.isEmpty
+          ? const Center(
+        child: Text(
+          'No hay riesgos en esta categoría.',
+          style: TextStyle(fontSize: 16, color: Colors.grey),
+        ),
+      )
+      // Si hay riesgos, construye la lista.
+          : ListView.builder(
+        itemCount: filteredRisks.length,
         itemBuilder: (context, index) {
-          final risk = risks[index];
-          // Asumiendo que RiskListItem es el widget que quieres usar para cada item
+          final risk = filteredRisks[index];
           return RiskListItem(
             risk: risk,
+            // Habilita la navegación a la pantalla de detalles al tocar.
             onTap: () {
-              // Navegar a la pantalla de detalle del riesgo, por ejemplo
-              // Navigator.of(context).push(MaterialPageRoute(builder: (_) => RiskDetailScreen(risk: risk)));
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => RiskDetailScreen(risk: risk),
+              ));
             },
           );
         },

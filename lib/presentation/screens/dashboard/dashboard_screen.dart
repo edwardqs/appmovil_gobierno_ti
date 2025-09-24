@@ -7,7 +7,7 @@ import '../risks/create_risk_screen.dart';
 import '../risks/risk_list_screen.dart';
 import '../../widgets/common/kpi_card.dart';
 import '../../widgets/animations/fade_in_animation.dart';
-import '../profile/profile_screen.dart'; // <-- 1. IMPORTAR LA NUEVA PANTALLA
+import '../profile/profile_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -39,7 +39,6 @@ class DashboardScreen extends StatelessWidget {
           ),
         ],
       ),
-      // ▼▼▼ 2. AÑADIR EL DRAWER (MENÚ LATERAL) ▼▼▼
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -66,7 +65,7 @@ class DashboardScreen extends StatelessWidget {
               leading: const Icon(Icons.person_outline),
               title: const Text('Perfil del Auditor'),
               onTap: () {
-                Navigator.pop(context); // Cierra el drawer
+                Navigator.pop(context);
                 Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => const ProfileScreen(),
                 ));
@@ -81,7 +80,6 @@ class DashboardScreen extends StatelessWidget {
           ],
         ),
       ),
-      // ▲▲▲ FIN DEL CÓDIGO DEL DRAWER ▲▲▲
       body: riskProvider.isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -89,7 +87,6 @@ class DashboardScreen extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(16.0),
           children: [
-            // Tarjetas de KPI con animación
             FadeInAnimation(
               delay: 0.5,
               child: KpiCard(
@@ -99,6 +96,7 @@ class DashboardScreen extends StatelessWidget {
                 color: AppColors.error,
                 onTap: () {
                   Navigator.of(context).push(MaterialPageRoute(
+                    // Ahora usa el enum importado y 'const' es válido de nuevo
                     builder: (_) => const RiskListScreen(
                         filter: RiskStatusFilter.critical),
                   ));
@@ -158,7 +156,7 @@ class DashboardScreen extends StatelessWidget {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
           Navigator.of(context)
-              .push(MaterialPageRoute(builder: (_) => CreateRiskScreen()));
+              .push(MaterialPageRoute(builder: (_) => const CreateRiskScreen()));
         },
         label: const Text('Nuevo Riesgo'),
         icon: const Icon(Icons.add),
@@ -167,4 +165,5 @@ class DashboardScreen extends StatelessWidget {
   }
 }
 
-enum RiskStatusFilter { all, critical, high }
+// 3. ELIMINA ESTA SECCIÓN DE TU ARCHIVO dashboard_screen.dart
+// enum RiskStatusFilter { all, critical, high }
