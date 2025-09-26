@@ -1,8 +1,10 @@
+// lib/data/services/risk_service.dart
+
 import 'dart:math';
 import '../models/risk_model.dart';
+import '../models/user_model.dart';
 
 class RiskService {
-  // Base de datos en memoria para simular los datos del backend.
   final List<Risk> _risks = [
     Risk(
       id: 'R001',
@@ -12,6 +14,8 @@ class RiskService {
       probability: 5,
       impact: 5,
       controlEffectiveness: 0.25,
+      assignedUserId: '1',
+      assignedUserName: 'Ana Torres',
     ),
     Risk(
       id: 'R002',
@@ -39,6 +43,8 @@ class RiskService {
       probability: 3,
       impact: 3,
       controlEffectiveness: 0.75,
+      assignedUserId: '3',
+      assignedUserName: 'Luis Gomez',
     ),
     Risk(
       id: 'R005',
@@ -51,25 +57,49 @@ class RiskService {
     ),
   ];
 
-  // Simula la obtención de todos los riesgos desde una API.
   Future<List<Risk>> getRisks() async {
-    // Simula un retardo de red.
     await Future.delayed(const Duration(seconds: 1));
     return _risks;
   }
 
-  // Simula la adición de un nuevo riesgo.
   Future<void> addRisk(Risk newRisk) async {
-    // Simula un retardo de red.
     await Future.delayed(const Duration(milliseconds: 500));
-    // En una app real, aquí se recibiría el riesgo creado desde la API.
-    // Para la simulación, lo añadimos a nuestra lista local.
     _risks.add(newRisk);
   }
 
-  // Genera un ID único para un nuevo riesgo (simulación).
   String generateNewId() {
     return 'R${Random().nextInt(900) + 100}';
   }
-}
 
+  Future<List<UserModel>> getAuditors() async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return [
+      UserModel(id: '1', name: 'Ana Torres', email: 'ana.t@company.com', role: UserRole.auditorJunior),
+      UserModel(id: '3', name: 'Luis Gomez', email: 'luis.g@company.com', role: UserRole.auditorSenior),
+      UserModel(id: '4', name: 'Maria Paz', email: 'maria.p@company.com', role: UserRole.auditorSenior),
+    ];
+  }
+
+  Future<void> assignRiskToUser(String riskId, UserModel user) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    try {
+      final risk = _risks.firstWhere((r) => r.id == riskId);
+      risk.assignedUserId = user.id;
+      risk.assignedUserName = user.name;
+    } catch (e) {
+      print('Error: Riesgo no encontrado para asignar.');
+    }
+  }
+
+  // ▼▼▼ FIRMA DE FUNCIÓN CORREGIDA ▼▼▼
+  Future<void> updateRiskStatus(String riskId, RiskStatus newStatus, {String? reviewNotes}) async {
+    await Future.delayed(const Duration(milliseconds: 400));
+    try {
+      final risk = _risks.firstWhere((r) => r.id == riskId);
+      risk.status = newStatus;
+      risk.reviewNotes = reviewNotes;
+    } catch (e) {
+      print('Error: Riesgo no encontrado para actualizar estado.');
+    }
+  }
+}

@@ -1,21 +1,54 @@
+// lib/data/services/auth_service.dart
+
+import '../models/user_model.dart';
+
 class AuthService {
-  // Esto simula una llamada a tu API backend.
-  // En el futuro, aquí usarás el paquete http para llamar a tu API FastAPI.
-  Future<bool> login(String email, String password) async {
-    // Simulación: Acepta credenciales específicas para la demo.
-    // En una app real, aquí se validaría un token de una API.
-    final bool isValidEmail = RegExp(r"^[a-zA-Z0-9.]+@[a-zA-Z0-9]+\.[a-zA-Z]+").hasMatch(email);
-    if (isValidEmail && password.isNotEmpty) {
-      // Simula un retardo de red para dar una sensación más realista.
-      await Future.delayed(const Duration(milliseconds: 1500));
-      return true; // Login exitoso
+  // Simulación de base de datos de usuarios
+  final List<Map<String, String>> _users = [
+    {
+      'id': '1',
+      'name': 'Ana Torres',
+      'email': 'auditor.jr@company.com',
+      'password': 'password',
+      'role': 'Auditor Junior',
+    },
+    // ▼▼▼ NUEVO USUARIO AÑADIDO ▼▼▼
+    {
+      'id': '3',
+      'name': 'Luis Gomez',
+      'email': 'auditor.sr@company.com',
+      'password': 'password',
+      'role': 'Auditor Senior',
+    },
+    {
+      'id': '2',
+      'name': 'Carlos Ramirez',
+      'email': 'gerente.ti@company.com',
+      'password': 'password',
+      'role': 'Gerente de Auditoría',
+    },
+  ];
+
+  Future<UserModel?> login(String email, String password) async {
+    await Future.delayed(const Duration(milliseconds: 1500));
+
+    final userRecord = _users.firstWhere(
+          (user) => user['email'] == email && user['password'] == password,
+      orElse: () => {},
+    );
+
+    if (userRecord.isNotEmpty) {
+      return UserModel(
+        id: userRecord['id']!,
+        name: userRecord['name']!,
+        email: userRecord['email']!,
+        role: UserModel.roleFromString(userRecord['role']!),
+      );
     }
-    await Future.delayed(const Duration(milliseconds: 800));
-    return false; // Login fallido
+    return null;
   }
 
   Future<void> logout() async {
-    // En una app real, aquí se limpiaría el token de autenticación.
     await Future.delayed(const Duration(milliseconds: 500));
   }
 }

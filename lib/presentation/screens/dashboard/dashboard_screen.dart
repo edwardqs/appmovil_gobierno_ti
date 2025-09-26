@@ -1,28 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../data/models/user_model.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/risk_provider.dart';
 import '../risks/create_risk_screen.dart';
-import '../risks/risk_list_screen.dart';
-import '../../widgets/common/kpi_card.dart';
-import '../../widgets/animations/fade_in_animation.dart';
 import '../profile/profile_screen.dart';
+import 'manager_dashboard_view.dart'; // <-- IMPORTAR VISTA GERENTE
+import 'auditor_dashboard_view.dart'; // <-- IMPORTAR VISTA AUDITOR
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
+  // Widget que decide qué dashboard mostrar
+  Widget _buildDashboardByRole(UserRole role) {
+    switch (role) {
+      case UserRole.gerenteAuditoria:
+      case UserRole.socioAuditoria:
+        return const ManagerDashboardView();
+
+      case UserRole.auditorJunior:
+      case UserRole.auditorSenior:
+      case UserRole.especialistaTI:
+        return const AuditorDashboardView();
+
+      default:
+      // Un dashboard por defecto si el rol es desconocido
+        return const Center(child: Text('Rol no reconocido.'));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final riskProvider = Provider.of<RiskProvider>(context);
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final authProvider = Provider.of<AuthProvider>(context);
+    final user = authProvider.currentUser;
 
-    final criticalRisks =
-        riskProvider.risks.where((r) => r.inherentRisk >= 20).length;
-    final highRisks = riskProvider.risks
-        .where((r) => r.inherentRisk >= 13 && r.inherentRisk < 20)
-        .length;
-    final totalRisks = riskProvider.risks.length;
+    // Si por alguna razón el usuario es nulo, muestra un loader.
+    if (user == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
     void _logout() {
       authProvider.logout();
@@ -44,26 +59,20 @@ class DashboardScreen extends StatelessWidget {
           padding: EdgeInsets.zero,
           children: [
             UserAccountsDrawerHeader(
-              accountName: const Text(
-                'Carlos Ramirez',
-                style: TextStyle(fontWeight: FontWeight.bold),
+              accountName: Text(
+                user.name,
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
-              accountEmail: const Text('ciso@company.com'),
+              accountEmail: Text(user.email),
               currentAccountPicture: const CircleAvatar(
                 backgroundColor: Colors.white,
-                child: Icon(
-                  Icons.person,
-                  size: 40,
-                  color: AppColors.primary,
-                ),
+                child: Icon(Icons.person, size: 40, color: AppColors.primary),
               ),
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-              ),
+              decoration: const BoxDecoration(color: AppColors.primary),
             ),
             ListTile(
               leading: const Icon(Icons.person_outline),
-              title: const Text('Perfil del Auditor'),
+              title: const Text('Mi Perfil'),
               onTap: () {
                 Navigator.pop(context);
                 Navigator.of(context).push(MaterialPageRoute(
@@ -80,90 +89,20 @@ class DashboardScreen extends StatelessWidget {
           ],
         ),
       ),
-      body: riskProvider.isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-        onRefresh: () => riskProvider.fetchRisks(),
-        child: ListView(
-          padding: const EdgeInsets.all(16.0),
-          children: [
-            FadeInAnimation(
-              delay: 0.5,
-              child: KpiCard(
-                title: 'Riesgos Críticos',
-                value: criticalRisks.toString(),
-                icon: Icons.warning_amber_rounded,
-                color: AppColors.error,
-                onTap: () {
-                  Navigator.of(context).push(MaterialPageRoute(
-                    // Ahora usa el enum importado y 'const' es válido de nuevo
-                    builder: (_) => const RiskListScreen(
-                        filter: RiskStatusFilter.critical),
-                  ));
-                },
-              ),
-            ),
-            const SizedBox(height: 16),
-            FadeInAnimation(
-              delay: 0.7,
-              child: KpiCard(
-                title: 'Riesgos Altos',
-                value: highRisks.toString(),
-                icon: Icons.dangerous_outlined,
-                color: AppColors.warning,
-                onTap: () {
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) =>
-                    const RiskListScreen(filter: RiskStatusFilter.high),
-                  ));
-                },
-              ),
-            ),
-            const SizedBox(height: 16),
-            FadeInAnimation(
-              delay: 0.9,
-              child: KpiCard(
-                title: 'Total de Riesgos',
-                value: totalRisks.toString(),
-                icon: Icons.shield_outlined,
-                color: AppColors.primary,
-                onTap: () {
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => const RiskListScreen(),
-                  ));
-                },
-              ),
-            ),
-            const SizedBox(height: 24),
-            FadeInAnimation(
-              delay: 1.1,
-              child: Card(
-                child: ListTile(
-                  leading: const Icon(Icons.list_alt_rounded),
-                  title: const Text('Ver todos los riesgos'),
-                  trailing: const Icon(Icons.arrow_forward_ios),
-                  onTap: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const RiskListScreen(),
-                    ));
-                  },
-                ),
-              ),
-            )
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
+      body: _buildDashboardByRole(user.role), // <-- Llama al distribuidor
+
+      // Mostrar el botón de "Nuevo Riesgo" solo a los roles que pueden registrar
+      floatingActionButton: (user.role == UserRole.auditorJunior || user.role == UserRole.auditorSenior)
+          ? FloatingActionButton.extended(
         onPressed: () {
-          Navigator.of(context)
-              .push(MaterialPageRoute(builder: (_) => const CreateRiskScreen()));
+          Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => const CreateRiskScreen(),
+          ));
         },
         label: const Text('Nuevo Riesgo'),
         icon: const Icon(Icons.add),
-      ),
+      )
+          : null, // No muestra el botón para otros roles
     );
   }
 }
-
-// 3. ELIMINA ESTA SECCIÓN DE TU ARCHIVO dashboard_screen.dart
-// enum RiskStatusFilter { all, critical, high }

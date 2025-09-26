@@ -1,15 +1,23 @@
-// Guarda este código en: lib/presentation/screens/risks/risk_detail_screen.dart
+// lib/presentation/screens/risks/risk_detail_screen.dart
 
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../data/models/risk_model.dart';
+import '../../../data/models/user_model.dart';
+import '../../providers/auth_provider.dart';
+import '../../providers/risk_provider.dart';
 
-class RiskDetailScreen extends StatelessWidget {
+class RiskDetailScreen extends StatefulWidget {
   final Risk risk;
-
   const RiskDetailScreen({super.key, required this.risk});
 
-  // El método para mostrar la imagen en un diálogo se mantiene igual
+  @override
+  State<RiskDetailScreen> createState() => _RiskDetailScreenState();
+}
+
+class _RiskDetailScreenState extends State<RiskDetailScreen> {
+
   void _showImageDialog(BuildContext context, String imagePath) {
     showDialog(
       context: context,
@@ -40,257 +48,274 @@ class RiskDetailScreen extends StatelessWidget {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      // La AppBar ahora es translúcida y el contenido pasa por debajo
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-      ),
-      body: ListView(
-        padding: EdgeInsets.zero, // Quitamos el padding para el encabezado
-        children: [
-          _buildHeader(context),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                _buildValuationCard(context),
-                const SizedBox(height: 16),
-                if (risk.comment?.isNotEmpty ?? false)
-                  _buildTitledCard(
-                    context,
-                    title: 'Comentarios del Auditor',
-                    child: Text(risk.comment!, style: Theme.of(context).textTheme.bodyMedium),
-                  ),
-                const SizedBox(height: 16),
-                if (risk.imagePaths.isNotEmpty)
-                  _buildTitledCard(
-                    context,
-                    title: 'Evidencia Fotográfica',
-                    child: _buildImageGrid(context),
-                  ),
-              ],
+  void _showAssignAuditorDialog(BuildContext context) {
+    final riskProvider = Provider.of<RiskProvider>(context, listen: false);
+    final auditors = riskProvider.auditors;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Asignar a Auditor'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: auditors.length,
+              itemBuilder: (context, index) {
+                final auditor = auditors[index];
+                return ListTile(
+                  title: Text(auditor.name),
+                  onTap: () {
+                    riskProvider.assignRisk(widget.risk.id, auditor);
+                    Navigator.of(context).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Riesgo asignado a ${auditor.name}')),
+                    );
+                  },
+                );
+              },
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  // --- WIDGETS DE LA NUEVA UI ---
-
-  // 1. Encabezado dinámico y colorido
-  Widget _buildHeader(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.only(left: 16, right: 16, top: 80, bottom: 24),
-      decoration: BoxDecoration(
-        color: risk.riskColor,
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            risk.title,
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: Colors.white),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              _DetailInfoTile(
-                icon: Icons.computer_outlined,
-                label: 'Activo',
-                value: risk.asset,
-              ),
-              const SizedBox(width: 24),
-              _DetailInfoTile(
-                icon: Icons.shield_outlined,
-                label: 'Estado',
-                value: risk.statusText,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 2. Tarjeta para la valoración con barras de progreso
-  Widget _buildValuationCard(BuildContext context) {
-    return _buildTitledCard(
-      context,
-      title: 'Análisis del Riesgo',
-      child: Column(
-        children: [
-          _ValuationBar(
-            label: 'Probabilidad',
-            value: risk.probability,
-            color: risk.riskColor,
-          ),
-          const SizedBox(height: 16),
-          _ValuationBar(
-            label: 'Impacto',
-            value: risk.impact,
-            color: risk.riskColor,
-          ),
-          const Divider(height: 32),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _ScoreCircle(
-                label: 'R. Inherente',
-                score: risk.inherentRisk.toString(),
-                color: risk.riskColor,
-              ),
-              _ScoreCircle(
-                label: 'R. Residual',
-                score: risk.residualRisk.toStringAsFixed(1),
-                color: Colors.blueGrey,
-              ),
-            ],
-          )
-        ],
-      ),
-    );
-  }
-
-  // 3. Grid para las imágenes
-  Widget _buildImageGrid(BuildContext context) {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-      ),
-      itemCount: risk.imagePaths.length,
-      itemBuilder: (context, index) {
-        final path = risk.imagePaths[index];
-        return GestureDetector(
-          onTap: () => _showImageDialog(context, path),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8.0),
-            child: Image.file(File(path), fit: BoxFit.cover),
-          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancelar'),
+            ),
+          ],
         );
       },
     );
   }
 
-  // 4. Widget base para las tarjetas con título
-  Widget _buildTitledCard(BuildContext context, {required String title, required Widget child}) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleLarge),
-            const Divider(height: 24),
-            child,
+  void _showReturnWithCommentDialog(BuildContext context) {
+    final riskProvider = Provider.of<RiskProvider>(context, listen: false);
+    final commentController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Devolver con Comentarios'),
+          content: TextField(
+            controller: commentController,
+            autofocus: true,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Notas de Revisión',
+              hintText: 'Explica los cambios necesarios...',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (commentController.text.isNotEmpty) {
+                  riskProvider.updateRiskStatus(
+                    widget.risk.id,
+                    RiskStatus.open,
+                    reviewNotes: commentController.text,
+                  );
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Riesgo devuelto al auditor con notas.')),
+                  );
+                }
+              },
+              child: const Text('Enviar'),
+            ),
           ],
-        ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final currentUser = authProvider.currentUser;
+    final riskProvider = Provider.of<RiskProvider>(context);
+    final currentRisk = riskProvider.risks.firstWhere((r) => r.id == widget.risk.id, orElse: () => widget.risk);
+    final isManager = currentUser?.role == UserRole.gerenteAuditoria || currentUser?.role == UserRole.socioAuditoria;
+    final isSeniorAuditor = currentUser?.role == UserRole.auditorSenior;
+    final isAssignedAuditor = currentUser?.id == currentRisk.assignedUserId;
+
+    return Scaffold(
+      appBar: AppBar(title: Text(currentRisk.title)),
+      body: ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildDetailRow(context, 'Activo Afectado:', currentRisk.asset),
+                  _buildDetailRow(context, 'Estado:', currentRisk.statusText),
+                  _buildDetailRow(context, 'Asignado a:', currentRisk.assignedUserName ?? 'Nadie'),
+                  _buildDetailRow(context, 'Nivel de Riesgo:', currentRisk.riskLevel),
+                  _buildDetailRow(context, 'Riesgo Inherente:', currentRisk.inherentRisk.toString()),
+                  _buildDetailRow(context, 'Riesgo Residual:', currentRisk.residualRisk.toStringAsFixed(2)),
+                  if (currentRisk.reviewNotes?.isNotEmpty ?? false) ...[
+                    const Divider(height: 32),
+                    Text('Notas de la Última Revisión:', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.orange.shade800)),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.orange.shade200)
+                      ),
+                      child: Text(currentRisk.reviewNotes!, style: Theme.of(context).textTheme.bodyMedium),
+                    ),
+                  ],
+                  if (currentRisk.comment?.isNotEmpty ?? false) ...[
+                    const Divider(height: 32),
+                    Text('Comentarios del Auditor', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Text(currentRisk.comment!, style: Theme.of(context).textTheme.bodyMedium),
+                  ],
+                  if (currentRisk.imagePaths.isNotEmpty) ...[
+                    const Divider(height: 32),
+                    Text('Evidencia Fotográfica', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 8.0,
+                      runSpacing: 8.0,
+                      children: currentRisk.imagePaths.map((path) {
+                        return GestureDetector(
+                          onTap: () => _showImageDialog(context, path),
+                          child: ClipRRect(borderRadius: BorderRadius.circular(8.0), child: Image.file(File(path), width: 80, height: 80, fit: BoxFit.cover)),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+
+          if (isAssignedAuditor) ...[
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Acciones de Auditor', style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 16),
+                    if (currentRisk.status == RiskStatus.open)
+                      _buildActionButton(
+                        context,
+                        title: 'Comenzar Tratamiento',
+                        icon: Icons.play_circle_outline,
+                        onPressed: () {
+                          riskProvider.updateRiskStatus(currentRisk.id, RiskStatus.inProgress);
+                        },
+                      ),
+                    if (currentRisk.status == RiskStatus.inProgress)
+                      _buildActionButton(
+                        context,
+                        title: 'Enviar a Revisión',
+                        icon: Icons.send_outlined,
+                        color: Colors.orange,
+                        onPressed: () {
+                          riskProvider.updateRiskStatus(currentRisk.id, RiskStatus.pendingReview);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Riesgo enviado a revisión.')),
+                          );
+                        },
+                      ),
+                    if (currentRisk.status == RiskStatus.pendingReview)
+                      const Text('Este riesgo está pendiente de revisión por un Auditor Senior.'),
+                    if (currentRisk.status == RiskStatus.closed)
+                      const Text('Este riesgo ha sido cerrado.'),
+                  ],
+                ),
+              ),
+            ),
+          ],
+
+          if (isSeniorAuditor && currentRisk.status == RiskStatus.pendingReview) ...[
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Acciones de Revisión', style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 16),
+                    _buildActionButton(
+                      context,
+                      title: 'Aprobar y Cerrar',
+                      icon: Icons.check_circle_outline,
+                      color: Colors.green,
+                      onPressed: () {
+                        riskProvider.updateRiskStatus(currentRisk.id, RiskStatus.closed, reviewNotes: '');
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Riesgo aprobado y cerrado.')),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _buildActionButton(
+                      context,
+                      title: 'Devolver con Comentarios',
+                      icon: Icons.undo_outlined,
+                      color: Colors.redAccent,
+                      onPressed: () {
+                        _showReturnWithCommentDialog(context);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ]
+        ],
+      ),
+      floatingActionButton: isManager
+          ? FloatingActionButton(
+        onPressed: () => _showAssignAuditorDialog(context),
+        tooltip: 'Asignar Auditor',
+        child: const Icon(Icons.person_add_alt_1),
+      )
+          : null,
+    );
+  }
+
+  Widget _buildDetailRow(BuildContext context, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(width: 16),
+          Flexible(child: Text(value, style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold), textAlign: TextAlign.end)),
+        ],
       ),
     );
   }
-}
 
-// --- WIDGETS AUXILIARES PARA LA UI ---
-
-class _DetailInfoTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-
-  const _DetailInfoTile({required this.icon, required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, color: Colors.white.withOpacity(0.8), size: 20),
-        const SizedBox(width: 8),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white.withOpacity(0.8)),
-            ),
-            Text(
-              value,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _ValuationBar extends StatelessWidget {
-  final String label;
-  final int value;
-  final Color color;
-
-  const _ValuationBar({required this.label, required this.value, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label, style: Theme.of(context).textTheme.titleMedium),
-            Text('$value de 5', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-          ],
-        ),
-        const SizedBox(height: 8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: LinearProgressIndicator(
-            value: value / 5.0,
-            minHeight: 10,
-            backgroundColor: color.withOpacity(0.2),
-            valueColor: AlwaysStoppedAnimation<Color>(color),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ScoreCircle extends StatelessWidget {
-  final String label;
-  final String score;
-  final Color color;
-
-  const _ScoreCircle({required this.label, required this.score, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(label, style: Theme.of(context).textTheme.bodyMedium),
-        const SizedBox(height: 8),
-        CircleAvatar(
-          radius: 30,
-          backgroundColor: color,
-          child: Text(
-            score,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Colors.white),
-          ),
-        ),
-      ],
+  Widget _buildActionButton(BuildContext context, {required String title, required IconData icon, Color? color, required VoidCallback onPressed}) {
+    return ElevatedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon),
+      label: Text(title),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color ?? Theme.of(context).primaryColor,
+        foregroundColor: Colors.white,
+        minimumSize: const Size(double.infinity, 48),
+      ),
     );
   }
 }

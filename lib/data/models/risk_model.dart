@@ -1,9 +1,13 @@
+// lib/data/models/risk_model.dart
+
 import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 
+// Se añadió el nuevo estado "pendingReview"
 enum RiskStatus {
   open,
   inProgress,
+  pendingReview, // <-- AÑADIDO
   closed,
 }
 
@@ -11,12 +15,15 @@ class Risk {
   final String id;
   final String title;
   final String asset;
-  final RiskStatus status;
+  RiskStatus status; // Quitamos 'final' para que pueda ser modificado
   final int probability;
   final int impact;
   final double controlEffectiveness;
-  final String? comment; // <-- AÑADIDO
-  final List<String> imagePaths; // <-- AÑADIDO
+  final String? comment;
+  final List<String> imagePaths;
+  String? assignedUserId;
+  String? assignedUserName;
+  String? reviewNotes;
 
   Risk({
     required this.id,
@@ -26,12 +33,14 @@ class Risk {
     required this.probability,
     required this.impact,
     this.controlEffectiveness = 0.5,
-    this.comment, // <-- AÑADIDO
-    this.imagePaths = const [], // <-- AÑADIDO
+    this.comment,
+    this.imagePaths = const [],
+    this.assignedUserId,
+    this.assignedUserName,
+    this.reviewNotes,
   });
 
   int get inherentRisk => probability * impact;
-
   double get residualRisk => (probability * (1 - controlEffectiveness)) * impact;
 
   String get riskLevel {
@@ -54,12 +63,15 @@ class Risk {
     }
   }
 
+  // Se actualizó para dar el texto correspondiente al nuevo estado
   String get statusText {
     switch (status) {
       case RiskStatus.open:
         return 'Abierto';
       case RiskStatus.inProgress:
         return 'En Tratamiento';
+      case RiskStatus.pendingReview:
+        return 'Pendiente de Revisión'; // <-- AÑADIDO
       case RiskStatus.closed:
         return 'Cerrado';
     }
