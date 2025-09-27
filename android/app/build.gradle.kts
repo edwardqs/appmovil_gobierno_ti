@@ -10,7 +10,7 @@ plugins {
 android {
     namespace = "com.appbogiernoti.app_gobiernoti"
     ndkVersion = "27.0.12077973"
-    compileSdk = 35
+    compileSdk = 36
 
 // CORRECTO
     compileOptions {
@@ -26,7 +26,7 @@ android {
         applicationId = "com.appbogiernoti.app_gobiernoti"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 23
+        minSdk = flutter.minSdkVersion           
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

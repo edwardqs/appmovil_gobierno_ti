@@ -7,6 +7,10 @@ import '../../../data/models/risk_model.dart';
 import '../../../data/models/user_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/risk_provider.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:pdf/pdf.dart';
+import 'package:printing/printing.dart';
+
 
 class RiskDetailScreen extends StatefulWidget {
   final Risk risk;
@@ -133,6 +137,174 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
     );
   }
 
+  Future<void> _generateRiskPdf(Risk risk) async {
+  final doc = pw.Document();
+
+  // Cargar imágenes (si hay)
+  final pwImages = <pw.ImageProvider>[];
+  for (final path in risk.imagePaths) {
+    try {
+      final bytes = await File(path).readAsBytes();
+      pwImages.add(pw.MemoryImage(bytes));
+    } catch (_) {}
+  }
+
+  pw.Widget rowKV(String k, String v) => pw.Container(
+        margin: const pw.EdgeInsets.symmetric(vertical: 3),
+        child: pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Container(
+              width: 150,
+              padding: const pw.EdgeInsets.symmetric(vertical: 2),
+              child: pw.Text(
+                k,
+                style: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.blue800,
+                ),
+              ),
+            ),
+            pw.Expanded(
+              child: pw.Text(v, style: pw.TextStyle(color: PdfColors.black)),
+            ),
+          ],
+        ),
+      );
+
+  // Cabecera + contenido
+  doc.addPage(
+    pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(24),
+      build: (context) => [
+        // CABECERA
+        pw.Container(
+          padding: const pw.EdgeInsets.all(12),
+          decoration: pw.BoxDecoration(
+            color: PdfColors.blue900,
+            borderRadius: pw.BorderRadius.circular(6),
+          ),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                "Reporte de Riesgo",
+                style: pw.TextStyle(
+                  color: PdfColors.white,
+                  fontSize: 18,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: pw.BoxDecoration(
+                  color: (risk.status == RiskStatus.closed)
+                      ? PdfColors.green600
+                      : PdfColors.orange600,
+                  borderRadius: pw.BorderRadius.circular(4),
+                ),
+                child: pw.Text(
+                  risk.statusText,
+                  style: const pw.TextStyle(color: PdfColors.white),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        pw.SizedBox(height: 16),
+
+        // DATOS PRINCIPALES
+        rowKV('ID:', risk.id),
+        rowKV('Título:', risk.title),
+        rowKV('Activo Afectado:', risk.asset),
+        rowKV('Asignado a:', risk.assignedUserName ?? 'Nadie'),
+        rowKV('Nivel de Riesgo:', risk.riskLevel),
+        rowKV('Probabilidad:', risk.probability.toString()),
+        rowKV('Impacto:', risk.impact.toString()),
+        rowKV('Efectividad del Control:', '${(risk.controlEffectiveness * 100).toStringAsFixed(0)}%'),
+        rowKV('Riesgo Inherente:', risk.inherentRisk.toString()),
+        rowKV('Riesgo Residual:', risk.residualRisk.toStringAsFixed(2)),
+
+        if (risk.reviewNotes?.isNotEmpty ?? false) ...[
+          pw.SizedBox(height: 12),
+          pw.Text(
+            'Notas de Revisión',
+            style: pw.TextStyle(
+              fontSize: 14,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.orange800,
+            ),
+          ),
+          pw.SizedBox(height: 4),
+          pw.Text(risk.reviewNotes!),
+        ],
+
+        if (risk.comment?.isNotEmpty ?? false) ...[
+          pw.SizedBox(height: 12),
+          pw.Text(
+            'Comentarios del Auditor',
+            style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 4),
+          pw.Text(risk.comment!),
+        ],
+
+        pw.SizedBox(height: 12),
+        pw.Text(
+          'Análisis de la IA',
+          style: pw.TextStyle(
+            fontSize: 14,
+            fontWeight: pw.FontWeight.bold,
+            color: PdfColors.indigo,
+          ),
+        ),
+        pw.SizedBox(height: 4),
+        pw.Text('Aquí aparecerá el análisis generado automáticamente por la IA.'),
+
+        if (pwImages.isNotEmpty) ...[
+          pw.SizedBox(height: 16),
+          pw.Text(
+            'Evidencia Fotográfica',
+            style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 8),
+          pw.Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: pwImages
+                .map(
+                  (img) => pw.Container(
+                    width: 120,
+                    height: 90,
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(color: PdfColors.grey300),
+                      borderRadius: pw.BorderRadius.circular(6),
+                    ),
+                    child: pw.ClipRRect(
+                      horizontalRadius: 6,
+                      verticalRadius: 6,
+                      child: pw.Image(img, fit: pw.BoxFit.cover),
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+      ],
+    ),
+  );
+
+  // COMPARTIR (ya no imprime)
+  await Printing.sharePdf(
+    bytes: await doc.save(),
+    filename: 'reporte_riesgo_${risk.id}.pdf',
+  );
+}
+
+
+
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -202,6 +374,33 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
           ),
 
           if (isAssignedAuditor) ...[
+            // ▼▼▼ SECCIÓN DE ANÁLISIS DE LA IA ▼▼▼
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Análisis de la IA:',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.indigo,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Aquí aparecerá el comentario generado automáticamente por la IA, '
+                    'incluyendo observaciones y pasos recomendados.',
+                    style: TextStyle(fontSize: 14, color: Colors.black87),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // ▲▲▲ FIN SECCIÓN DE ANÁLISIS DE LA IA ▲▲▲
+
             const SizedBox(height: 16),
             Card(
               child: Padding(
@@ -279,8 +478,35 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
                 ),
               ),
             ),
-          ]
+          ],
+
+          // Mostrar exportación solo si el riesgo está Cerrado y el usuario es Auditor Senior
+          if (isSeniorAuditor && currentRisk.status == RiskStatus.closed) ...[
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Exportar', style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.picture_as_pdf_outlined),
+                      label: const Text('Generar PDF'),
+                      onPressed: () => _generateRiskPdf(currentRisk),
+                      style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 48)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+
+          
         ],
+
+        
       ),
       floatingActionButton: isManager
           ? FloatingActionButton(
