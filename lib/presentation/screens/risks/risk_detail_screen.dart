@@ -261,7 +261,43 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
           ),
         ),
         pw.SizedBox(height: 4),
-        pw.Text('Aquí aparecerá el análisis generado automáticamente por la IA.'),
+
+        // ⬇⬇ Reemplaza este Text corto por el análisis completo ⬇⬇
+        pw.Text(
+          '''Análisis de Riesgo bajo el Marco de Gobierno de TI (COBIT)
+
+        1. Alineación con los Objetivos Estratégicos
+
+        Este riesgo de "Vulnerabilidad crítica en el Firewall" impacta directamente en múltiples objetivos de la organización. Un firewall comprometido no es solo una falla técnica; es una falla en la capacidad de la empresa para garantizar la resiliencia del servicio (un objetivo de TI) y proteger la información de las partes interesadas (un objetivo de negocio). La materialización de este riesgo podría llevar al incumplimiento de normativas de protección de datos (ej. GDPR, Ley de Protección de Datos Personales), resultando en sanciones financieras y un daño significativo a la reputación, lo cual afecta directamente la continuidad del negocio y la confianza del cliente.
+
+        2. Análisis de Fallo en los Procesos de Gobierno y Gestión
+
+        La existencia de esta vulnerabilidad sin parchar evidencia una debilidad en procesos clave de gestión de TI, específicamente:
+
+        APO12 (Gestionar el Riesgo): El proceso de identificación de riesgos ha funcionado, pero el proceso de respuesta y mitigación está fallando en agilidad. El riesgo residual actual de 3.0 es inaceptable para un activo tan crítico.
+
+        BAI03 (Gestionar Soluciones de Identificación y Construcción): La falta de una política de gestión de parches robusta indica una deficiencia en el ciclo de vida de la gestión de activos de TI. No se está asegurando que los componentes de la infraestructura se mantengan en un estado seguro y soportado.
+
+        DSS05 (Gestionar los Servicios de Seguridad): Aunque existen controles compensatorios (IPS), la dependencia de estos sin corregir la causa raíz (firmware desactualizado) no es una postura de seguridad sostenible y demuestra una falta de madurez en la gestión de la seguridad perimetral.
+
+        3. Recomendaciones Orientadas al Gobierno y la Mejora Continua
+
+        Las recomendaciones deben ir más allá de la solución técnica para fortalecer la estructura de gobierno y evitar la recurrencia del problema.
+
+        Acción Inmediata (Tratamiento del Riesgo): Aplicar el parche de seguridad es el tratamiento de riesgo obvio y debe ejecutarse de forma prioritaria. Esta acción debe ser registrada y supervisada por el propietario del riesgo designado (probablemente el Gerente de Infraestructura), con un seguimiento por parte del CISO o el comité de riesgos de TI.
+
+        Acción Táctica (Mejora del Proceso): Se debe formalizar e implementar una Política de Gestión de Parches y Vulnerabilidades para toda la organización. Esta política debe definir plazos máximos (SLAs) para la aplicación de parches basados en la criticidad de la vulnerabilidad y del activo, alineándose con el apetito de riesgo definido por la dirección. La efectividad de este proceso debe medirse a través de métricas clave (KPIs), como el "tiempo medio para parchear vulnerabilidades críticas".
+
+        Acción Estratégica (Fortalecimiento del Gobierno): El Comité de Riesgos de TI debe revisar este incidente como un caso de estudio para evaluar si los recursos asignados a la gestión de la seguridad son adecuados. Además, se debe asegurar que el inventario de activos de TI (proceso BAI09) esté actualizado y clasificado correctamente según su criticidad para el negocio, garantizando que los activos más importantes reciban la máxima prioridad en los ciclos de parcheo.
+        ''',
+          textAlign: pw.TextAlign.justify,
+          style: pw.TextStyle(
+            fontSize: 11,
+            lineSpacing: 2, // interlineado suave
+          ),
+        ),
+        // ⬆⬆ Aquí termina el reemplazo ⬆⬆
+
 
         if (pwImages.isNotEmpty) ...[
           pw.SizedBox(height: 16),
@@ -374,32 +410,67 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
           ),
 
           if (isAssignedAuditor) ...[
-            // ▼▼▼ SECCIÓN DE ANÁLISIS DE LA IA ▼▼▼
-          const SizedBox(height: 16),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Análisis de la IA:',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.indigo,
+           // ▼▼▼ SECCIÓN DE ANÁLISIS DE LA IA ▼▼▼
+              const SizedBox(height: 16),
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Análisis de la IA:',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.indigo,
+                            ),
+                      ),
+                      const SizedBox(height: 8),
+                      SingleChildScrollView(
+                        child: SelectableText(
+                          '''Análisis de Riesgo bajo el Marco de Gobierno de TI (COBIT)
+
+              1. Alineación con los Objetivos Estratégicos
+
+              Este riesgo de "Vulnerabilidad crítica en el Firewall" impacta directamente en múltiples objetivos de la organización. Un firewall comprometido no es solo una falla técnica; es una falla en la capacidad de la empresa para garantizar la resiliencia del servicio (un objetivo de TI) y proteger la información de las partes interesadas (un objetivo de negocio). La materialización de este riesgo podría llevar al incumplimiento de normativas de protección de datos (ej. GDPR, Ley de Protección de Datos Personales), resultando en sanciones financieras y un daño significativo a la reputación, lo cual afecta directamente la continuidad del negocio y la confianza del cliente.
+
+              2. Análisis de Fallo en los Procesos de Gobierno y Gestión
+
+              La existencia de esta vulnerabilidad sin parchar evidencia una debilidad en procesos clave de gestión de TI, específicamente:
+
+              APO12 (Gestionar el Riesgo): El proceso de identificación de riesgos ha funcionado, pero el proceso de respuesta y mitigación está fallando en agilidad. El riesgo residual actual de 3.0 es inaceptable para un activo tan crítico.
+
+              BAI03 (Gestionar Soluciones de Identificación y Construcción): La falta de una política de gestión de parches robusta indica una deficiencia en el ciclo de vida de la gestión de activos de TI. No se está asegurando que los componentes de la infraestructura se mantengan en un estado seguro y soportado.
+
+              DSS05 (Gestionar los Servicios de Seguridad): Aunque existen controles compensatorios (IPS), la dependencia de estos sin corregir la causa raíz (firmware desactualizado) no es una postura de seguridad sostenible y demuestra una falta de madurez en la gestión de la seguridad perimetral.
+
+              3. Recomendaciones Orientadas al Gobierno y la Mejora Continua
+
+              Las recomendaciones deben ir más allá de la solución técnica para fortalecer la estructura de gobierno y evitar la recurrencia del problema.
+
+              Acción Inmediata (Tratamiento del Riesgo): Aplicar el parche de seguridad es el tratamiento de riesgo obvio y debe ejecutarse de forma prioritaria. Esta acción debe ser registrada y supervisada por el propietario del riesgo designado (probablemente el Gerente de Infraestructura), con un seguimiento por parte del CISO o el comité de riesgos de TI.
+
+              Acción Táctica (Mejora del Proceso): Se debe formalizar e implementar una Política de Gestión de Parches y Vulnerabilidades para toda la organización. Esta política debe definir plazos máximos (SLAs) para la aplicación de parches basados en la criticidad de la vulnerabilidad y del activo, alineándose con el apetito de riesgo definido por la dirección. La efectividad de este proceso debe medirse a través de métricas clave (KPIs), como el "tiempo medio para parchear vulnerabilidades críticas".
+
+              Acción Estratégica (Fortalecimiento del Gobierno): El Comité de Riesgos de TI debe revisar este incidente como un caso de estudio para evaluar si los recursos asignados a la gestión de la seguridad son adecuados. Además, se debe asegurar que el inventario de activos de TI (proceso BAI09) esté actualizado y clasificado correctamente según su criticidad para el negocio, garantizando que los activos más importantes reciban la máxima prioridad en los ciclos de parcheo.
+              ''',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            height: 1.5,
+                            color: Colors.black87,
+                          ),
+                          textAlign: TextAlign.justify,
                         ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Aquí aparecerá el comentario generado automáticamente por la IA, '
-                    'incluyendo observaciones y pasos recomendados.',
-                    style: TextStyle(fontSize: 14, color: Colors.black87),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
-          // ▲▲▲ FIN SECCIÓN DE ANÁLISIS DE LA IA ▲▲▲
+              // ▲▲▲ FIN SECCIÓN DE ANÁLISIS DE LA IA ▲▲▲
+
+
 
             const SizedBox(height: 16),
             Card(
