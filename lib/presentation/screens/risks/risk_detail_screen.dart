@@ -3,6 +3,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:convert'; // Necesario para codificación Base64 (imágenes)
+import 'package:http/http.dart' as http; // Necesario para llamadas a la API
 import '../../../data/models/risk_model.dart';
 import '../../../data/models/user_model.dart';
 import '../../providers/auth_provider.dart';
@@ -21,6 +23,125 @@ class RiskDetailScreen extends StatefulWidget {
 }
 
 class _RiskDetailScreenState extends State<RiskDetailScreen> {
+
+  // ▼▼▼ VARIABLES DE ESTADO MODIFICADAS ▼▼▼
+  // Solo necesitamos el estado de carga para el botón de análisis
+  bool _isAiAnalyzing = false;
+  // ▲▲▲ FIN VARIABLES DE ESTADO ▼▼▲
+
+  // EL MÉTODO initState SE HA ELIMINADO para que el análisis no sea automático.
+
+  // ▼▼▼ FUNCIÓN DE LA API MODIFICADA PARA GUARDAR EL RESULTADO ▼▼▼
+  Future<void> _fetchAiAnalysis() async {
+    if (!mounted || _isAiAnalyzing) return;
+
+    setState(() {
+      _isAiAnalyzing = true;
+    });
+
+    final riskProvider = Provider.of<RiskProvider>(context, listen: false);
+    // Usamos el estado más reciente del riesgo
+    final risk = riskProvider.risks.firstWhere((r) => r.id == widget.risk.id, orElse: () => widget.risk);
+
+    String generatedAnalysis = 'Error: No se pudo generar el análisis.';
+
+    // 1. Construcción del Prompt (incluyendo los detalles del riesgo)
+    final riskDetails = '''
+      Riesgo ID: ${risk.id}
+      Título: ${risk.title}
+      Activo Afectado: ${risk.asset}
+      Probabilidad (1-5): ${risk.probability}
+      Impacto (1-5): ${risk.impact}
+      Nivel de Riesgo Inherente: ${risk.inherentRisk}
+      Efectividad del Control (0.0-1.0): ${risk.controlEffectiveness}
+      Riesgo Residual Estimado: ${risk.residualRisk.toStringAsFixed(2)}
+      Comentarios del Auditor: ${risk.comment ?? 'No hay comentarios.'}
+    ''';
+
+    // 2. Construir la solicitud multimodal (Texto y Imágenes)
+    final List<Map<String, dynamic>> parts = [
+      {
+        "text": '''
+        Actúa como un Auditor Senior especializado en Gobierno de TI y Control Interno bajo el marco COBIT. 
+        Analiza el siguiente riesgo de TI de forma técnica, estructurada y concisa (máximo 3 párrafos). 
+        Tu análisis debe abordar con claridad los siguientes puntos:
+  
+        1. *Implicación del riesgo:* Explica cómo este riesgo afecta el logro de los objetivos de negocio y de TI, en relación con los principios y dominios del marco COBIT.  
+        2. *Evaluación del riesgo residual:* Determina si el riesgo residual es aceptable o no, considerando el nivel de riesgo inherente y la efectividad de los controles existentes.  
+        3. *Recomendaciones de mejora:* Propón acciones concretas y priorizadas para fortalecer el Gobierno de TI, mejorar la efectividad del control y reducir la exposición al riesgo.
+  
+        Sé directo, evita repeticiones o texto genérico. Fundamenta brevemente tus conclusiones en los conceptos de COBIT y buenas prácticas de gestión de riesgos.
+        Detalle del riesgo a analizar:
+
+        ${riskDetails.trim()}
+        '''
+      }
+    ];
+
+    // 2.1. Añadir imágenes
+    for (final path in risk.imagePaths) {
+      try {
+        final bytes = await File(path).readAsBytes();
+        final base64Image = base64Encode(bytes);
+        final mimeType = path.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+
+        parts.add({
+          "inlineData": {
+            "data": base64Image,
+            "mimeType": mimeType,
+          }
+        });
+      } catch (e) {
+        debugPrint('Error al procesar imagen para IA: $e');
+      }
+    }
+
+    final payload = {
+      "contents": [
+        {"parts": parts}
+      ]
+    };
+
+    // 3. Llamar a la API
+    // **IMPORTANTE: REEMPLAZA ESTA CLAVE CON TU CLAVE REAL**
+    const apiKey = 'AIzaSyBVU2vBuRwbu1vv4WajfKzAzW6v1Y-0iaY';
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$apiKey';
+
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
+      );
+
+      if (response.statusCode == 200) {
+        final jsonResponse = jsonDecode(response.body);
+        final generatedText = jsonResponse['candidates'][0]['content']['parts'][0]['text'] as String;
+        generatedAnalysis = generatedText.trim();
+
+        // 4. PERSISTIR el resultado
+        await riskProvider.saveAiAnalysis(risk.id, generatedAnalysis);
+
+      } else {
+        generatedAnalysis = 'Error de API (${response.statusCode}): No se pudo obtener el análisis.';
+        await riskProvider.saveAiAnalysis(risk.id, generatedAnalysis); // Persistir el error
+      }
+    } catch (e) {
+      generatedAnalysis = 'Error de conexión: Detalle: $e';
+      await riskProvider.saveAiAnalysis(risk.id, generatedAnalysis); // Persistir el error
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAiAnalyzing = false;
+        });
+      }
+    }
+  }
+  // ▲▲▲ FIN FUNCIÓN DE LA API MODIFICADA ▼▼▲
+
+  // El resto de funciones auxiliares (_showImageDialog, _showAssignAuditorDialog, _showReturnWithCommentDialog)
+  // deben estar definidas fuera del build, ya sea aquí o en el widget padre si lo prefieres.
+  // ... (asume que aquí está el código de las funciones auxiliares)
 
   void _showImageDialog(BuildContext context, String imagePath) {
     showDialog(
@@ -137,208 +258,184 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
     );
   }
 
+  // ▼▼▼ FUNCIÓN DE PDF MODIFICADA PARA USAR EL CAMPO PERSISTIDO ▼▼▼
   Future<void> _generateRiskPdf(Risk risk) async {
-  final doc = pw.Document();
+    final doc = pw.Document();
 
-  // Cargar imágenes (si hay)
-  final pwImages = <pw.ImageProvider>[];
-  for (final path in risk.imagePaths) {
-    try {
-      final bytes = await File(path).readAsBytes();
-      pwImages.add(pw.MemoryImage(bytes));
-    } catch (_) {}
-  }
+    // Función para carga de imágenes y rowKV (mantenida de la implementación previa)
+    final pwImages = <pw.ImageProvider>[];
+    for (final path in risk.imagePaths) {
+      try {
+        final bytes = await File(path).readAsBytes();
+        pwImages.add(pw.MemoryImage(bytes));
+      } catch (_) {}
+    }
 
-  pw.Widget rowKV(String k, String v) => pw.Container(
-        margin: const pw.EdgeInsets.symmetric(vertical: 3),
-        child: pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Container(
-              width: 150,
-              padding: const pw.EdgeInsets.symmetric(vertical: 2),
-              child: pw.Text(
-                k,
-                style: pw.TextStyle(
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.blue800,
-                ),
+    pw.Widget rowKV(String k, String v) => pw.Container(
+      margin: const pw.EdgeInsets.symmetric(vertical: 3),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Container(
+            width: 150,
+            padding: const pw.EdgeInsets.symmetric(vertical: 2),
+            child: pw.Text(
+              k,
+              style: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.blue800,
               ),
             ),
-            pw.Expanded(
-              child: pw.Text(v, style: pw.TextStyle(color: PdfColors.black)),
+          ),
+          pw.Expanded(
+            child: pw.Text(v, style: pw.TextStyle(color: PdfColors.black)),
+          ),
+        ],
+      ),
+    );
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(24),
+        build: (context) => [
+          // CABECERA (mantenida)
+          pw.Container(
+            padding: const pw.EdgeInsets.all(12),
+            decoration: pw.BoxDecoration(
+              color: PdfColors.blue900,
+              borderRadius: pw.BorderRadius.circular(6),
+            ),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  "Reporte de Riesgo",
+                  style: pw.TextStyle(
+                    color: PdfColors.white,
+                    fontSize: 18,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.Container(
+                  padding:
+                  const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: pw.BoxDecoration(
+                    color: (risk.status == RiskStatus.closed)
+                        ? PdfColors.green600
+                        : PdfColors.orange600,
+                    borderRadius: pw.BorderRadius.circular(4),
+                  ),
+                  child: pw.Text(
+                    risk.statusText,
+                    style: const pw.TextStyle(color: PdfColors.white),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          pw.SizedBox(height: 16),
+
+          // DATOS PRINCIPALES (mantenidos)
+          rowKV('ID:', risk.id),
+          rowKV('Título:', risk.title),
+          rowKV('Activo Afectado:', risk.asset),
+          rowKV('Asignado a:', risk.assignedUserName ?? 'Nadie'),
+          rowKV('Nivel de Riesgo:', risk.riskLevel),
+          rowKV('Probabilidad:', risk.probability.toString()),
+          rowKV('Impacto:', risk.impact.toString()),
+          rowKV('Efectividad del Control:',
+              '${(risk.controlEffectiveness * 100).toStringAsFixed(0)}%'),
+          rowKV('Riesgo Inherente:', risk.inherentRisk.toString()),
+          rowKV('Riesgo Residual:', risk.residualRisk.toStringAsFixed(2)),
+
+          if (risk.reviewNotes?.isNotEmpty ?? false) ...[
+            pw.SizedBox(height: 12),
+            pw.Text(
+              'Notas de Revisión',
+              style: pw.TextStyle(
+                fontSize: 14,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.orange800,
+              ),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Text(risk.reviewNotes!),
+          ],
+
+          if (risk.comment?.isNotEmpty ?? false) ...[
+            pw.SizedBox(height: 12),
+            pw.Text(
+              'Comentarios del Auditor',
+              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Text(risk.comment!),
+          ],
+
+          // Reemplazo: Usar el análisis de la IA persistido (risk.aiAnalysis)
+          if (risk.aiAnalysis?.isNotEmpty ?? false) ...[
+            pw.SizedBox(height: 12),
+            pw.Text(
+              'Análisis de la IA',
+              style: pw.TextStyle(
+                fontSize: 14,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.indigo,
+              ),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Text(
+              risk.aiAnalysis!, // Usa el campo persistido
+              textAlign: pw.TextAlign.justify,
+              style: pw.TextStyle(
+                fontSize: 11,
+                lineSpacing: 2,
+              ),
             ),
           ],
-        ),
-      );
 
-  // Cabecera + contenido
-  doc.addPage(
-    pw.MultiPage(
-      pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.all(24),
-      build: (context) => [
-        // CABECERA
-        pw.Container(
-          padding: const pw.EdgeInsets.all(12),
-          decoration: pw.BoxDecoration(
-            color: PdfColors.blue900,
-            borderRadius: pw.BorderRadius.circular(6),
-          ),
-          child: pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text(
-                "Reporte de Riesgo",
-                style: pw.TextStyle(
-                  color: PdfColors.white,
-                  fontSize: 18,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-              pw.Container(
-                padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: pw.BoxDecoration(
-                  color: (risk.status == RiskStatus.closed)
-                      ? PdfColors.green600
-                      : PdfColors.orange600,
-                  borderRadius: pw.BorderRadius.circular(4),
-                ),
-                child: pw.Text(
-                  risk.statusText,
-                  style: const pw.TextStyle(color: PdfColors.white),
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        pw.SizedBox(height: 16),
-
-        // DATOS PRINCIPALES
-        rowKV('ID:', risk.id),
-        rowKV('Título:', risk.title),
-        rowKV('Activo Afectado:', risk.asset),
-        rowKV('Asignado a:', risk.assignedUserName ?? 'Nadie'),
-        rowKV('Nivel de Riesgo:', risk.riskLevel),
-        rowKV('Probabilidad:', risk.probability.toString()),
-        rowKV('Impacto:', risk.impact.toString()),
-        rowKV('Efectividad del Control:', '${(risk.controlEffectiveness * 100).toStringAsFixed(0)}%'),
-        rowKV('Riesgo Inherente:', risk.inherentRisk.toString()),
-        rowKV('Riesgo Residual:', risk.residualRisk.toStringAsFixed(2)),
-
-        if (risk.reviewNotes?.isNotEmpty ?? false) ...[
-          pw.SizedBox(height: 12),
-          pw.Text(
-            'Notas de Revisión',
-            style: pw.TextStyle(
-              fontSize: 14,
-              fontWeight: pw.FontWeight.bold,
-              color: PdfColors.orange800,
+          // Evidencia (mantenida)
+          if (pwImages.isNotEmpty) ...[
+            pw.SizedBox(height: 16),
+            pw.Text(
+              'Evidencia Fotográfica',
+              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
             ),
-          ),
-          pw.SizedBox(height: 4),
-          pw.Text(risk.reviewNotes!),
-        ],
-
-        if (risk.comment?.isNotEmpty ?? false) ...[
-          pw.SizedBox(height: 12),
-          pw.Text(
-            'Comentarios del Auditor',
-            style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
-          ),
-          pw.SizedBox(height: 4),
-          pw.Text(risk.comment!),
-        ],
-
-        pw.SizedBox(height: 12),
-        pw.Text(
-          'Análisis de la IA',
-          style: pw.TextStyle(
-            fontSize: 14,
-            fontWeight: pw.FontWeight.bold,
-            color: PdfColors.indigo,
-          ),
-        ),
-        pw.SizedBox(height: 4),
-
-        // ⬇⬇ Reemplaza este Text corto por el análisis completo ⬇⬇
-        pw.Text(
-          '''Análisis de Riesgo bajo el Marco de Gobierno de TI (COBIT)
-
-        1. Alineación con los Objetivos Estratégicos
-
-        Este riesgo de "Vulnerabilidad crítica en el Firewall" impacta directamente en múltiples objetivos de la organización. Un firewall comprometido no es solo una falla técnica; es una falla en la capacidad de la empresa para garantizar la resiliencia del servicio (un objetivo de TI) y proteger la información de las partes interesadas (un objetivo de negocio). La materialización de este riesgo podría llevar al incumplimiento de normativas de protección de datos (ej. GDPR, Ley de Protección de Datos Personales), resultando en sanciones financieras y un daño significativo a la reputación, lo cual afecta directamente la continuidad del negocio y la confianza del cliente.
-
-        2. Análisis de Fallo en los Procesos de Gobierno y Gestión
-
-        La existencia de esta vulnerabilidad sin parchar evidencia una debilidad en procesos clave de gestión de TI, específicamente:
-
-        APO12 (Gestionar el Riesgo): El proceso de identificación de riesgos ha funcionado, pero el proceso de respuesta y mitigación está fallando en agilidad. El riesgo residual actual de 3.0 es inaceptable para un activo tan crítico.
-
-        BAI03 (Gestionar Soluciones de Identificación y Construcción): La falta de una política de gestión de parches robusta indica una deficiencia en el ciclo de vida de la gestión de activos de TI. No se está asegurando que los componentes de la infraestructura se mantengan en un estado seguro y soportado.
-
-        DSS05 (Gestionar los Servicios de Seguridad): Aunque existen controles compensatorios (IPS), la dependencia de estos sin corregir la causa raíz (firmware desactualizado) no es una postura de seguridad sostenible y demuestra una falta de madurez en la gestión de la seguridad perimetral.
-
-        3. Recomendaciones Orientadas al Gobierno y la Mejora Continua
-
-        Las recomendaciones deben ir más allá de la solución técnica para fortalecer la estructura de gobierno y evitar la recurrencia del problema.
-
-        Acción Inmediata (Tratamiento del Riesgo): Aplicar el parche de seguridad es el tratamiento de riesgo obvio y debe ejecutarse de forma prioritaria. Esta acción debe ser registrada y supervisada por el propietario del riesgo designado (probablemente el Gerente de Infraestructura), con un seguimiento por parte del CISO o el comité de riesgos de TI.
-
-        Acción Táctica (Mejora del Proceso): Se debe formalizar e implementar una Política de Gestión de Parches y Vulnerabilidades para toda la organización. Esta política debe definir plazos máximos (SLAs) para la aplicación de parches basados en la criticidad de la vulnerabilidad y del activo, alineándose con el apetito de riesgo definido por la dirección. La efectividad de este proceso debe medirse a través de métricas clave (KPIs), como el "tiempo medio para parchear vulnerabilidades críticas".
-
-        Acción Estratégica (Fortalecimiento del Gobierno): El Comité de Riesgos de TI debe revisar este incidente como un caso de estudio para evaluar si los recursos asignados a la gestión de la seguridad son adecuados. Además, se debe asegurar que el inventario de activos de TI (proceso BAI09) esté actualizado y clasificado correctamente según su criticidad para el negocio, garantizando que los activos más importantes reciban la máxima prioridad en los ciclos de parcheo.
-        ''',
-          textAlign: pw.TextAlign.justify,
-          style: pw.TextStyle(
-            fontSize: 11,
-            lineSpacing: 2, // interlineado suave
-          ),
-        ),
-        // ⬆⬆ Aquí termina el reemplazo ⬆⬆
-
-
-        if (pwImages.isNotEmpty) ...[
-          pw.SizedBox(height: 16),
-          pw.Text(
-            'Evidencia Fotográfica',
-            style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
-          ),
-          pw.SizedBox(height: 8),
-          pw.Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: pwImages
-                .map(
-                  (img) => pw.Container(
-                    width: 120,
-                    height: 90,
-                    decoration: pw.BoxDecoration(
-                      border: pw.Border.all(color: PdfColors.grey300),
-                      borderRadius: pw.BorderRadius.circular(6),
-                    ),
-                    child: pw.ClipRRect(
-                      horizontalRadius: 6,
-                      verticalRadius: 6,
-                      child: pw.Image(img, fit: pw.BoxFit.cover),
-                    ),
+            pw.SizedBox(height: 8),
+            pw.Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: pwImages
+                  .map(
+                    (img) => pw.Container(
+                  width: 120,
+                  height: 90,
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: PdfColors.grey300),
+                    borderRadius: pw.BorderRadius.circular(6),
                   ),
-                )
-                .toList(),
-          ),
+                  child: pw.ClipRRect(
+                    horizontalRadius: 6,
+                    verticalRadius: 6,
+                    child: pw.Image(img, fit: pw.BoxFit.cover),
+                  ),
+                ),
+              )
+                  .toList(),
+            ),
+          ],
         ],
-      ],
-    ),
-  );
+      ),
+    );
 
-  // COMPARTIR (ya no imprime)
-  await Printing.sharePdf(
-    bytes: await doc.save(),
-    filename: 'reporte_riesgo_${risk.id}.pdf',
-  );
-}
-
+    await Printing.sharePdf(
+      bytes: await doc.save(),
+      filename: 'reporte_riesgo_${risk.id}.pdf',
+    );
+  }
+  // ▲▲▲ FIN FUNCIÓN DE PDF MODIFICADA ▼▼▲
 
 
   @override
@@ -346,10 +443,20 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final currentUser = authProvider.currentUser;
     final riskProvider = Provider.of<RiskProvider>(context);
+    // Usamos .firstWhere para obtener el riesgo más actualizado del provider
     final currentRisk = riskProvider.risks.firstWhere((r) => r.id == widget.risk.id, orElse: () => widget.risk);
+
+    // Definición de roles
     final isManager = currentUser?.role == UserRole.gerenteAuditoria || currentUser?.role == UserRole.socioAuditoria;
     final isSeniorAuditor = currentUser?.role == UserRole.auditorSenior;
     final isAssignedAuditor = currentUser?.id == currentRisk.assignedUserId;
+
+    // Condición para mostrar el botón de PDF (Auditor Senior O Gerente/Socio)
+    final canGeneratePdf = isManager || isSeniorAuditor;
+
+    // Condición para mostrar el botón de Análisis (Solo Auditor Asignado Y si no se ha generado)
+    final canGenerateAiAnalysis = isAssignedAuditor && (currentRisk.aiAnalysis == null || currentRisk.aiAnalysis!.isEmpty);
+
 
     return Scaffold(
       appBar: AppBar(title: Text(currentRisk.title)),
@@ -357,6 +464,7 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
         padding: const EdgeInsets.all(16.0),
         children: [
           Card(
+            // ... Contenido de la tarjeta principal (Detalles del riesgo)
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -409,53 +517,55 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
             ),
           ),
 
-          if (isAssignedAuditor) ...[
-           // ▼▼▼ SECCIÓN DE ANÁLISIS DE LA IA ▼▼▼
-              const SizedBox(height: 16),
-              Card(
-                elevation: 2,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Análisis de la IA:',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.indigo,
-                            ),
+          // ▼▼▼ SECCIÓN DE ANÁLISIS DE LA IA (A DEMANDA Y PERSISTENTE) ▼▼▼
+          const SizedBox(height: 16),
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Análisis de la IA:',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.indigo,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  if (canGenerateAiAnalysis)
+                  // Muestra el botón para generar
+                    _buildActionButton(
+                      context,
+                      title: 'Generar Análisis con IA',
+                      icon: Icons.auto_awesome_outlined,
+                      color: Colors.indigo,
+                      onPressed: _isAiAnalyzing ? null : _fetchAiAnalysis,
+                    )
+                  else if (_isAiAnalyzing)
+                  // Muestra el indicador de carga
+                    Center(
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 16),
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Generando análisis de riesgo con IA...',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                       ),
-                      const SizedBox(height: 8),
+                    )
+                  else if (currentRisk.aiAnalysis?.isNotEmpty ?? false)
+                    // Muestra el análisis guardado
                       SingleChildScrollView(
                         child: SelectableText(
-                          '''Análisis de Riesgo bajo el Marco de Gobierno de TI (COBIT)
-
-              1. Alineación con los Objetivos Estratégicos
-
-              Este riesgo de "Vulnerabilidad crítica en el Firewall" impacta directamente en múltiples objetivos de la organización. Un firewall comprometido no es solo una falla técnica; es una falla en la capacidad de la empresa para garantizar la resiliencia del servicio (un objetivo de TI) y proteger la información de las partes interesadas (un objetivo de negocio). La materialización de este riesgo podría llevar al incumplimiento de normativas de protección de datos (ej. GDPR, Ley de Protección de Datos Personales), resultando en sanciones financieras y un daño significativo a la reputación, lo cual afecta directamente la continuidad del negocio y la confianza del cliente.
-
-              2. Análisis de Fallo en los Procesos de Gobierno y Gestión
-
-              La existencia de esta vulnerabilidad sin parchar evidencia una debilidad en procesos clave de gestión de TI, específicamente:
-
-              APO12 (Gestionar el Riesgo): El proceso de identificación de riesgos ha funcionado, pero el proceso de respuesta y mitigación está fallando en agilidad. El riesgo residual actual de 3.0 es inaceptable para un activo tan crítico.
-
-              BAI03 (Gestionar Soluciones de Identificación y Construcción): La falta de una política de gestión de parches robusta indica una deficiencia en el ciclo de vida de la gestión de activos de TI. No se está asegurando que los componentes de la infraestructura se mantengan en un estado seguro y soportado.
-
-              DSS05 (Gestionar los Servicios de Seguridad): Aunque existen controles compensatorios (IPS), la dependencia de estos sin corregir la causa raíz (firmware desactualizado) no es una postura de seguridad sostenible y demuestra una falta de madurez en la gestión de la seguridad perimetral.
-
-              3. Recomendaciones Orientadas al Gobierno y la Mejora Continua
-
-              Las recomendaciones deben ir más allá de la solución técnica para fortalecer la estructura de gobierno y evitar la recurrencia del problema.
-
-              Acción Inmediata (Tratamiento del Riesgo): Aplicar el parche de seguridad es el tratamiento de riesgo obvio y debe ejecutarse de forma prioritaria. Esta acción debe ser registrada y supervisada por el propietario del riesgo designado (probablemente el Gerente de Infraestructura), con un seguimiento por parte del CISO o el comité de riesgos de TI.
-
-              Acción Táctica (Mejora del Proceso): Se debe formalizar e implementar una Política de Gestión de Parches y Vulnerabilidades para toda la organización. Esta política debe definir plazos máximos (SLAs) para la aplicación de parches basados en la criticidad de la vulnerabilidad y del activo, alineándose con el apetito de riesgo definido por la dirección. La efectividad de este proceso debe medirse a través de métricas clave (KPIs), como el "tiempo medio para parchear vulnerabilidades críticas".
-
-              Acción Estratégica (Fortalecimiento del Gobierno): El Comité de Riesgos de TI debe revisar este incidente como un caso de estudio para evaluar si los recursos asignados a la gestión de la seguridad son adecuados. Además, se debe asegurar que el inventario de activos de TI (proceso BAI09) esté actualizado y clasificado correctamente según su criticidad para el negocio, garantizando que los activos más importantes reciban la máxima prioridad en los ciclos de parcheo.
-              ''',
+                          currentRisk.aiAnalysis!,
                           style: const TextStyle(
                             fontSize: 14,
                             height: 1.5,
@@ -463,15 +573,33 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
                           ),
                           textAlign: TextAlign.justify,
                         ),
+                      )
+                    else
+                    // Si no se ha generado y no tiene permiso
+                      Text(
+                        'El análisis de IA aún no ha sido generado.',
+                        style: Theme.of(context).textTheme.bodyMedium,
                       ),
-                    ],
-                  ),
-                ),
+
+                  // Opción para regenerar (solo si es auditor asignado y no está en curso)
+                  if (isAssignedAuditor && (currentRisk.aiAnalysis?.isNotEmpty ?? false) && !_isAiAnalyzing)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 16.0),
+                      child: TextButton.icon(
+                        icon: const Icon(Icons.refresh, size: 20),
+                        label: const Text('Volver a generar análisis IA'),
+                        onPressed: _fetchAiAnalysis,
+                      ),
+                    ),
+                ],
               ),
-              // ▲▲▲ FIN SECCIÓN DE ANÁLISIS DE LA IA ▲▲▲
+            ),
+          ),
+          // ▲▲▲ FIN SECCIÓN DE ANÁLISIS DE LA IA (A DEMANDA Y PERSISTENTE) ▲▲▲
 
 
-
+          // Sección de Acciones de Auditor (se mantiene como estaba)
+          if (isAssignedAuditor) ...[
             const SizedBox(height: 16),
             Card(
               child: Padding(
@@ -513,6 +641,7 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
             ),
           ],
 
+          // Sección de Acciones de Revisión (se mantiene como estaba)
           if (isSeniorAuditor && currentRisk.status == RiskStatus.pendingReview) ...[
             const SizedBox(height: 16),
             Card(
@@ -528,6 +657,7 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
                       title: 'Aprobar y Cerrar',
                       icon: Icons.check_circle_outline,
                       color: Colors.green,
+                      // Se mantiene la lógica de Approve & Close aquí
                       onPressed: () {
                         riskProvider.updateRiskStatus(currentRisk.id, RiskStatus.closed, reviewNotes: '');
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -551,8 +681,8 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
             ),
           ],
 
-          // Mostrar exportación solo si el riesgo está Cerrado y el usuario es Auditor Senior
-          if (isSeniorAuditor && currentRisk.status == RiskStatus.closed) ...[
+          // ▼▼▼ SECCIÓN DE EXPORTAR (VISIBLE para Manager y Senior Auditor) ▼▼▼
+          if (canGeneratePdf) ...[
             const SizedBox(height: 16),
             Card(
               child: Padding(
@@ -573,11 +703,9 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
               ),
             ),
           ],
+          // ▲▲▲ FIN SECCIÓN DE EXPORTAR (MODIFICADA) ▼▼▲
 
-          
         ],
-
-        
       ),
       floatingActionButton: isManager
           ? FloatingActionButton(
@@ -603,7 +731,8 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
     );
   }
 
-  Widget _buildActionButton(BuildContext context, {required String title, required IconData icon, Color? color, required VoidCallback onPressed}) {
+  // Se modificó para aceptar VoidCallback? ya que el botón puede estar deshabilitado (_isAiAnalyzing)
+  Widget _buildActionButton(BuildContext context, {required String title, required IconData icon, Color? color, required VoidCallback? onPressed}) {
     return ElevatedButton.icon(
       onPressed: onPressed,
       icon: Icon(icon),
@@ -615,4 +744,5 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
       ),
     );
   }
+
 }

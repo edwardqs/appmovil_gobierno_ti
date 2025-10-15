@@ -71,6 +71,19 @@ class RiskProvider with ChangeNotifier {
     await fetchRisks();
   }
 
+  // ▼▼▼ MÉTODO PARA GUARDAR Y NOTIFICAR EL ANÁLISIS DE LA IA ▼▼▼
+  Future<void> saveAiAnalysis(String riskId, String analysisText) async {
+    try {
+      await _riskService.saveAiAnalysis(riskId, analysisText);
+      final riskIndex = _risks.indexWhere((r) => r.id == riskId);
+      if (riskIndex != -1) {
+        _risks[riskIndex].aiAnalysis = analysisText;
+        notifyListeners();
+      }
+    } catch (e){
+      print(e);
+    }
+  }
   // ▼▼▼ FIRMA DE FUNCIÓN CORREGIDA ▼▼▼
   Future<void> updateRiskStatus(String riskId, RiskStatus newStatus, {String? reviewNotes}) async {
     try {

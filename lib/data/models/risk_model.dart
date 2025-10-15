@@ -24,6 +24,7 @@ class Risk {
   String? assignedUserId;
   String? assignedUserName;
   String? reviewNotes;
+  String? aiAnalysis;
 
   Risk({
     required this.id,
@@ -38,6 +39,7 @@ class Risk {
     this.assignedUserId,
     this.assignedUserName,
     this.reviewNotes,
+    this.aiAnalysis,
   });
 
   int get inherentRisk => probability * impact;

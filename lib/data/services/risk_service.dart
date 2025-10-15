@@ -16,6 +16,7 @@ class RiskService {
       controlEffectiveness: 0.25,
       assignedUserId: '1',
       assignedUserName: 'Ana Torres',
+      aiAnalysis: null,
     ),
     Risk(
       id: 'R002',
@@ -25,6 +26,7 @@ class RiskService {
       probability: 4,
       impact: 4,
       controlEffectiveness: 0.5,
+      aiAnalysis: null,
     ),
     Risk(
       id: 'R003',
@@ -34,6 +36,7 @@ class RiskService {
       probability: 2,
       impact: 5,
       controlEffectiveness: 0.9,
+      aiAnalysis: null,
     ),
     Risk(
       id: 'R004',
@@ -45,6 +48,7 @@ class RiskService {
       controlEffectiveness: 0.75,
       assignedUserId: '3',
       assignedUserName: 'Luis Gomez',
+      aiAnalysis: null,
     ),
     Risk(
       id: 'R005',
@@ -54,9 +58,18 @@ class RiskService {
       probability: 2,
       impact: 2,
       controlEffectiveness: 0.6,
+      aiAnalysis: null,
     ),
   ];
-
+  Future<void> saveAiAnalysis(String riskId, String analysisText) async {
+    await Future.delayed(const Duration(milliseconds: 400));
+    try{
+      final risk = _risks.firstWhere((r) => r.id == riskId);
+      risk.aiAnalysis = analysisText;
+    } catch (e){
+      print("Error: Riesgo no encontrado para guardar el análisis IA.");
+    }
+  }
   Future<List<Risk>> getRisks() async {
     await Future.delayed(const Duration(seconds: 1));
     return _risks;
