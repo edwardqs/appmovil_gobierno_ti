@@ -42,10 +42,14 @@ dependencies:
   pdf: ^3.10.7
   printing: ^5.13.5
   http: ^1.2.1 # O la última versión estable
+  get_it: ^7.7.0
+  go_router: ^14.2.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  mockito: ^5.4.4
+  build_runner: ^2.4.11
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

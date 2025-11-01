@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/risk_model.dart';
@@ -36,8 +35,8 @@ class RiskListItem extends StatelessWidget {
         return 'Cerrado';
       case RiskStatus.inProgress:
         return 'En Progreso';
-      default:
-        return '';
+      case RiskStatus.pendingReview:
+        return 'Pendiente de Revisión';
     }
   }
 

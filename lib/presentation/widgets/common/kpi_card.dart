@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../../core/theme/app_colors.dart';
 
 class KpiCard extends StatefulWidget {
   final String title;
@@ -20,7 +19,7 @@ class KpiCard extends StatefulWidget {
   });
 
   @override
-  _KpiCardState createState() => _KpiCardState();
+  State<KpiCard> createState() => _KpiCardState();
 }
 
 class _KpiCardState extends State<KpiCard> with SingleTickerProviderStateMixin {
@@ -66,7 +65,7 @@ class _KpiCardState extends State<KpiCard> with SingleTickerProviderStateMixin {
         scale: _scaleAnimation,
         child: Card(
           elevation: 4,
-          shadowColor: widget.color.withOpacity(0.3),
+          shadowColor: widget.color.withValues(alpha: 0.3),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: InkWell(
             onTap: widget.onTap,
@@ -76,7 +75,7 @@ class _KpiCardState extends State<KpiCard> with SingleTickerProviderStateMixin {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
                 gradient: LinearGradient(
-                  colors: [widget.color.withOpacity(0.8), widget.color],
+                  colors: [widget.color.withValues(alpha: 0.8), widget.color],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -86,7 +85,7 @@ class _KpiCardState extends State<KpiCard> with SingleTickerProviderStateMixin {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   CircleAvatar(
-                    backgroundColor: Colors.white.withOpacity(0.2),
+                    backgroundColor: Colors.white.withValues(alpha: 0.2),
                     child: Icon(widget.icon, color: Colors.white),
                   ),
                   const SizedBox(height: 12),
@@ -102,7 +101,7 @@ class _KpiCardState extends State<KpiCard> with SingleTickerProviderStateMixin {
                     style: Theme.of(context)
                         .textTheme
                         .titleMedium
-                        ?.copyWith(color: Colors.white.withOpacity(0.9)),
+                        ?.copyWith(color: Colors.white.withValues(alpha: 0.9)),
                   ),
                 ],
               ),

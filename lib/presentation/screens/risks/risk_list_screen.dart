@@ -35,7 +35,6 @@ class RiskListScreen extends StatelessWidget {
             .toList();
         break;
       case RiskStatusFilter.all:
-      default:
         screenTitle = 'Todos los Riesgos';
         filteredRisks = allRisks;
         break;

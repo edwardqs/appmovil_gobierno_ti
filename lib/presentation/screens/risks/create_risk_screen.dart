@@ -9,7 +9,7 @@ class CreateRiskScreen extends StatefulWidget {
   const CreateRiskScreen({super.key});
 
   @override
-  _CreateRiskScreenState createState() => _CreateRiskScreenState();
+  State<CreateRiskScreen> createState() => _CreateRiskScreenState();
 }
 
 class _CreateRiskScreenState extends State<CreateRiskScreen> {
@@ -55,11 +55,49 @@ class _CreateRiskScreenState extends State<CreateRiskScreen> {
   // --- Lógica de Negocio (sin cambios, pero bien estructurada) ---
 
   Future<void> _showImageSourceDialog() async {
-    // ... (código sin cambios)
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: <Widget>[
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Galería'),
+                onTap: () {
+                  _getImage(ImageSource.gallery);
+                  Navigator.of(context).pop();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera),
+                title: const Text('Cámara'),
+                onTap: () {
+                  _getImage(ImageSource.camera);
+                  Navigator.of(context).pop();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _getImage(ImageSource source) async {
-    // ... (código sin cambios)
+    try {
+      final pickedFile = await _picker.pickImage(source: source);
+      if (pickedFile != null) {
+        setState(() {
+          _images.add(File(pickedFile.path));
+        });
+      }
+    } catch (e) {
+      // Manejar errores, por ejemplo, si el usuario no da permisos.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo seleccionar la imagen: $e')),
+      );
+    }
   }
 
   void _removeImage(int index) {
@@ -69,7 +107,20 @@ class _CreateRiskScreenState extends State<CreateRiskScreen> {
   }
 
   void _submitForm() {
-    // ... (código sin cambios)
+    if (_formKey.currentState!.validate()) {
+      // Lógica para guardar el riesgo
+      final riskProvider = Provider.of<RiskProvider>(context, listen: false);
+      riskProvider.addRisk(
+        _titleController.text,
+        _assetController.text,
+        _probability.toInt(),
+        _impact.toInt(),
+        _controlEffectiveness,
+        _commentController.text.isNotEmpty ? _commentController.text : null,
+        _images.map((file) => file.path).toList(),
+      );
+      Navigator.pop(context);
+    }
   }
 
   // =======================================================================

@@ -85,6 +85,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
+              // ignore: deprecated_member_use
               value: _selectedRole,
               decoration: const InputDecoration(labelText: 'Cargo', prefixIcon: Icon(Icons.work_outline)),
               items: _auditorRoles.map((String role) {

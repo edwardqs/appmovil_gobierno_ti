@@ -9,6 +9,7 @@ class AppTheme {
     colorScheme: const ColorScheme.light(
       primary: AppColors.primary,
       secondary: AppColors.accent,
+      // ignore: deprecated_member_use
       background: AppColors.background,
       error: AppColors.error,
     ),
