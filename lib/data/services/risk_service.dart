@@ -1,15 +1,67 @@
 // lib/data/services/risk_service.dart
 
+import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/risk_model.dart';
 import '../models/user_model.dart';
+import 'audit_service.dart';
 
 class RiskService {
   final SupabaseClient _supabase = Supabase.instance.client;
+  final AuditService _auditService = AuditService();
 
   /// Genera un nuevo ID único para un riesgo
   String generateNewId() {
     return DateTime.now().millisecondsSinceEpoch.toString();
+  }
+
+  /// Sube una imagen a Supabase Storage y retorna la URL pública
+  Future<String?> uploadImage(String imagePath, String riskId) async {
+    try {
+      final file = File(imagePath);
+      if (!await file.exists()) {
+        print('❌ Archivo no encontrado: $imagePath');
+        return null;
+      }
+
+      // Generar nombre único para la imagen
+      final fileName = '${riskId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final filePath = 'risk-images/$fileName';
+
+      // Subir archivo a Supabase Storage
+      await _supabase.storage
+          .from('risk-attachments')
+          .upload(filePath, file);
+
+      // Obtener URL pública
+      final publicUrl = _supabase.storage
+          .from('risk-attachments')
+          .getPublicUrl(filePath);
+
+      // Registrar en auditoría
+      await _auditService.logImageUpload(riskId, publicUrl);
+
+      print('✅ Imagen subida exitosamente: $publicUrl');
+      return publicUrl;
+    } catch (e) {
+      print('❌ Error al subir imagen: $e');
+      return null;
+    }
+  }
+
+  /// Sube múltiples imágenes y retorna las URLs
+  Future<List<String>> uploadImages(List<String> imagePaths, String riskId) async {
+    final List<String> uploadedUrls = [];
+    
+    for (String imagePath in imagePaths) {
+      final url = await uploadImage(imagePath, riskId);
+      if (url != null) {
+        uploadedUrls.add(url);
+      }
+    }
+    
+    print('✅ ${uploadedUrls.length}/${imagePaths.length} imágenes subidas exitosamente');
+    return uploadedUrls;
   }
 
   /// Guarda el análisis de IA para un riesgo específico
@@ -66,7 +118,18 @@ class RiskService {
         throw Exception('Usuario no autenticado');
       }
 
+      // Generar ID único para el riesgo
+      final riskId = generateNewId();
+
+      // Subir imágenes si existen
+      List<String> imageUrls = [];
+      if (newRisk.imagePaths.isNotEmpty) {
+        print('📸 Subiendo ${newRisk.imagePaths.length} imágenes...');
+        imageUrls = await uploadImages(newRisk.imagePaths, riskId);
+      }
+
       final riskData = {
+        'id': riskId,
         'title': newRisk.title,
         'asset': newRisk.asset,
         'status': newRisk.status.name,
@@ -74,6 +137,7 @@ class RiskService {
         'impact': newRisk.impact,
         'control_effectiveness': newRisk.controlEffectiveness,
         'comment': newRisk.comment,
+        'image_paths': imageUrls, // Guardar URLs de imágenes subidas
         'assigned_user_id': newRisk.assignedUserId,
         'assigned_user_name': newRisk.assignedUserName,
         'created_by': currentUser.id,
@@ -85,7 +149,7 @@ class RiskService {
           .select()
           .single();
 
-      print('✅ Riesgo creado exitosamente: ${response['id']}');
+      print('✅ Riesgo creado exitosamente: ${response['id']} con ${imageUrls.length} imágenes');
       return Risk.fromJson(response);
     } catch (e) {
       print('❌ Error al crear riesgo: $e');
