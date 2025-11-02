@@ -137,17 +137,52 @@ class AuthService {
         '👤 [LOGIN_EMAIL] Perfil obtenido. Biometría habilitada: ${user.biometricEnabled}',
       );
 
-      // ✅ IMPORTANTE: Si el usuario tiene biometría habilitada en BD,
-      // renovar las credenciales locales para mantener sincronización
+      // ✅ CRÍTICO: Si el usuario tiene biometría habilitada en BD,
+      // DEBEMOS guardar los tokens de ESTA sesión activa
+      // Esto reemplaza cualquier token viejo (invalidado por logout anterior)
       if (user.biometricEnabled && response.session != null) {
-        print('🔄 [LOGIN_EMAIL] Usuario tiene biometría habilitada, renovando credenciales...');
-        await _renewBiometricCredentials(response.session!);
+        print('🔄 [LOGIN_EMAIL] Usuario tiene biometría habilitada, guardando tokens de sesión activa...');
 
-        // Asegurar que el flag local esté sincronizado
+        final deviceId = await _getDeviceId();
+
+        // Guardar TODAS las credenciales necesarias
+        await _secureStorage.write(
+          key: _keyRefreshToken,
+          value: response.session!.refreshToken,
+        );
+        await _secureStorage.write(
+          key: _keyAccessToken,
+          value: response.session!.accessToken,
+        );
+        await _secureStorage.write(key: _keyUserEmail, value: user.email);
+        await _secureStorage.write(key: _keyDeviceId, value: deviceId);
+
+        // Actualizar flag local
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool(_keyBiometricEnabled, true);
 
-        print('✅ [LOGIN_EMAIL] Credenciales biométricas renovadas y sincronizadas');
+        print('✅ [LOGIN_EMAIL] Credenciales biométricas guardadas (tokens VÁLIDOS de sesión activa)');
+
+        // Verificar si el dispositivo está registrado en user_devices
+        try {
+          final isRegistered = await _deviceService.isDeviceRegistered(
+            user.id,
+            deviceId,
+          );
+
+          if (!isRegistered) {
+            print('📱 [LOGIN_EMAIL] Dispositivo no registrado, registrando...');
+            await _deviceService.registerCurrentDevice(user.id);
+            print('✅ [LOGIN_EMAIL] Dispositivo registrado en user_devices');
+          } else {
+            print('✅ [LOGIN_EMAIL] Dispositivo ya está registrado');
+            // Actualizar last_used_at
+            await _deviceService.updateDeviceLastUsed(user.id, deviceId);
+          }
+        } catch (e) {
+          print('⚠️ [LOGIN_EMAIL] Error al verificar/registrar dispositivo: $e');
+          // No fallar el login por esto
+        }
       }
 
       return user;
@@ -486,52 +521,66 @@ class AuthService {
 
   Future<Map<String, dynamic>> disableBiometricForCurrentUser() async {
     try {
-      print('🔐 [BIOMETRIC] Deshabilitando biometría en este dispositivo...');
+      print('🔐 [BIOMETRIC_DISABLE] Deshabilitando biometría en este dispositivo...');
 
       final user = _supabase.auth.currentUser;
       if (user == null) {
         return {'success': false, 'message': 'No hay sesión activa'};
       }
 
-      final deviceId = await _secureStorage.read(key: _keyDeviceId);
+      final deviceId = await _getDeviceId();
+      print('📱 [BIOMETRIC_DISABLE] Device ID: $deviceId');
+
+      // ✅ Desactivar dispositivo en user_devices PRIMERO
+      try {
+        final deactivated = await _deviceService.deactivateDevice(user.id, deviceId);
+        if (deactivated) {
+          print('✅ [BIOMETRIC_DISABLE] Dispositivo desactivado en user_devices');
+        } else {
+          print('⚠️ [BIOMETRIC_DISABLE] No se pudo desactivar dispositivo en BD');
+        }
+      } catch (e) {
+        print('❌ [BIOMETRIC_DISABLE] Error al desactivar en user_devices: $e');
+      }
 
       // ✅ Limpiar credenciales locales
       await _clearBiometricData();
-
-      // ✅ NUEVO: Desactivar dispositivo en user_devices
-      if (deviceId != null) {
-        try {
-          await _deviceService.deactivateDevice(user.id, deviceId);
-          print('✅ [BIOMETRIC] Dispositivo desactivado en user_devices');
-        } catch (e) {
-          print('⚠️ [BIOMETRIC] No se pudo desactivar en user_devices: $e');
-        }
-      }
+      print('✅ [BIOMETRIC_DISABLE] Credenciales locales limpiadas');
 
       // ✅ Verificar si hay otros dispositivos activos
-      final activeDevices = await _deviceService.getActiveDevices(user.id);
-      final hasOtherDevices = activeDevices.isNotEmpty;
+      try {
+        final activeDevices = await _deviceService.getActiveDevices(user.id);
+        final hasOtherDevices = activeDevices.isNotEmpty;
 
-      // ✅ Solo actualizar biometric_enabled a false si no hay otros dispositivos
-      if (!hasOtherDevices) {
+        print('📱 [BIOMETRIC_DISABLE] Dispositivos activos restantes: ${activeDevices.length}');
+
+        // ✅ Solo actualizar biometric_enabled a false si no hay otros dispositivos
+        if (!hasOtherDevices) {
+          await _supabase.from('users').update({
+            'biometric_enabled': false,
+          }).eq('id', user.id);
+          print('✅ [BIOMETRIC_DISABLE] Flag biometric_enabled=false en users (no hay otros dispositivos)');
+        } else {
+          print(
+            'ℹ️ [BIOMETRIC_DISABLE] Hay ${activeDevices.length} dispositivos activos, manteniendo biometric_enabled=true',
+          );
+        }
+      } catch (e) {
+        print('⚠️ [BIOMETRIC_DISABLE] Error al verificar otros dispositivos: $e');
+        // Por seguridad, actualizar biometric_enabled a false
         await _supabase.from('users').update({
           'biometric_enabled': false,
         }).eq('id', user.id);
-        print('✅ [BIOMETRIC] Flag biometric_enabled actualizado en users');
-      } else {
-        print(
-          'ℹ️ [BIOMETRIC] Hay otros ${activeDevices.length} dispositivos activos, manteniendo flag',
-        );
       }
 
-      print('✅ [BIOMETRIC] Biometría deshabilitada en este dispositivo');
+      print('✅ [BIOMETRIC_DISABLE] Biometría deshabilitada exitosamente en este dispositivo');
 
       return {
         'success': true,
         'message': 'Biometría deshabilitada en este dispositivo',
       };
     } catch (e) {
-      print('❌ [BIOMETRIC] Error al deshabilitar biometría: $e');
+      print('❌ [BIOMETRIC_DISABLE] Error inesperado: $e');
       return {
         'success': false,
         'message': 'Error al deshabilitar biometría: ${e.toString()}',
