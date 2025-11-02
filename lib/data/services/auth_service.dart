@@ -192,19 +192,48 @@ class AuthService {
         return {'success': false, 'message': 'Autenticación cancelada'};
       }
 
+      // Verificar que hay una sesión activa
       final currentSession = _supabase.auth.currentSession;
-      final refreshToken = currentSession?.refreshToken;
-
-      if (refreshToken == null) {
+      if (currentSession == null) {
         return {
           'success': false,
-          'message': 'Error: No se encontró sesión activa',
+          'message': 'Error: No hay sesión activa',
         };
       }
 
+      // Verificar si la sesión está próxima a expirar (menos de 5 minutos)
+      final now = DateTime.now();
+      final expiresAt = DateTime.fromMillisecondsSinceEpoch(currentSession.expiresAt! * 1000);
+      final timeUntilExpiry = expiresAt.difference(now);
+
+      String refreshTokenToSave;
+
+      if (timeUntilExpiry.inMinutes < 5) {
+        // Si la sesión expira pronto, refrescarla primero
+        try {
+          final refreshResponse = await _supabase.auth.refreshSession(currentSession.refreshToken);
+          if (refreshResponse.session?.refreshToken == null) {
+            return {
+              'success': false,
+              'message': 'Error: No se pudo refrescar la sesión',
+            };
+          }
+          refreshTokenToSave = refreshResponse.session!.refreshToken!;
+        } catch (e) {
+          return {
+            'success': false,
+            'message': 'Error al refrescar sesión: ${e.toString()}',
+          };
+        }
+      } else {
+        // La sesión es válida, usar el refresh token actual
+        refreshTokenToSave = currentSession.refreshToken!;
+      }
+
+      // Guardar el refresh token válido
       await _secureStorage.write(
         key: _refreshTokenKey,
-        value: refreshToken,
+        value: refreshTokenToSave,
         iOptions: _iosOptions,
         aOptions: _androidOptions,
       );
