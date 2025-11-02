@@ -5,14 +5,16 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/risk_model.dart';
 import '../models/user_model.dart';
 import 'audit_service.dart';
+import 'package:uuid/uuid.dart';
 
 class RiskService {
   final SupabaseClient _supabase = Supabase.instance.client;
   final AuditService _auditService = AuditService();
 
-  /// Genera un nuevo ID único para un riesgo
+  /// Genera un nuevo ID único para un riesgo (UUID)
   String generateNewId() {
-    return DateTime.now().millisecondsSinceEpoch.toString();
+    const uuid = Uuid();
+    return uuid.v4();
   }
 
   /// Sube una imagen a Supabase Storage y retorna la URL pública
