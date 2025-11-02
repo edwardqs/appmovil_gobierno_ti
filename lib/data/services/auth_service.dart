@@ -1,5 +1,17 @@
+// lib/data/services/auth_service.dart
+
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'dart:io';
 import '../models/user_model.dart';
+import 'biometric_service.dart';
+import '../../core/locator.dart';
+
+// ============================================================================
+// EXCEPCIONES PERSONALIZADAS
+// ============================================================================
 
 class AuthServiceException implements Exception {
   final String code;
@@ -21,12 +33,40 @@ class UserProfileException implements Exception {
   String toString() => 'UserProfileException: [$code] $message';
 }
 
+class BiometricAuthException implements Exception {
+  final String code;
+  final String message;
+
+  BiometricAuthException(this.code, this.message);
+
+  @override
+  String toString() => 'BiometricAuthException: [$code] $message';
+}
+
+// ============================================================================
+// AUTH SERVICE
+// ============================================================================
+
 class AuthService {
   final SupabaseClient _supabase;
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  late final BiometricService _biometricService;
 
-  AuthService(this._supabase);
+  // Claves para almacenamiento
+  static const String _keyRefreshToken = 'biometric_refresh_token';
+  static const String _keyAccessToken = 'biometric_access_token';
+  static const String _keyUserEmail = 'biometric_user_email';
+  static const String _keyDeviceId = 'biometric_device_id';
+  static const String _keyBiometricEnabled = 'biometric_enabled';
 
-  /// Obtiene el usuario actual desde la sesión
+  AuthService(this._supabase) {
+    _biometricService = locator<BiometricService>();
+  }
+
+  // ==========================================================================
+  // MÉTODOS DE AUTENTICACIÓN BÁSICA
+  // ==========================================================================
+
   Future<UserModel?> getCurrentUser() async {
     try {
       final currentUser = _supabase.auth.currentUser;
@@ -51,16 +91,15 @@ class AuthService {
         address: response['address'],
       );
     } catch (e) {
-      print('Error al obtener usuario actual: $e');
+      print('❌ Error al obtener usuario actual: $e');
       return null;
-   }
+    }
   }
-  
-  /// Registra un nuevo usuario - VERSIÓN CORREGIDA
 
-  /// Inicia sesión con email y contraseña
   Future<UserModel> login(String email, String password) async {
     try {
+      print('🔐 [LOGIN_EMAIL] Iniciando login con email...');
+
       final response = await _supabase.auth.signInWithPassword(
         email: email,
         password: password,
@@ -70,13 +109,15 @@ class AuthService {
         throw AuthServiceException('LOGIN_FAILED', 'No se pudo iniciar sesión');
       }
 
+      print('✅ [LOGIN_EMAIL] Login exitoso, obteniendo perfil...');
+
       final userData = await _supabase
           .from('users')
           .select()
           .eq('id', response.user!.id)
           .single();
 
-      return UserModel(
+      final user = UserModel(
         id: response.user!.id,
         name: userData['name'],
         email: userData['email'],
@@ -88,40 +129,36 @@ class AuthService {
         phone: userData['phone'],
         address: userData['address'],
       );
+
+      print(
+        '👤 [LOGIN_EMAIL] Perfil obtenido. Biometría habilitada: ${user.biometricEnabled}',
+      );
+
+      if (user.biometricEnabled && response.session != null) {
+        await _renewBiometricCredentials(response.session!);
+      }
+
+      return user;
     } on AuthException catch (e) {
+      print('❌ [LOGIN_EMAIL] Error AuthException: ${e.message}');
       throw AuthServiceException('AUTH_ERROR', e.message);
     } catch (e) {
+      print('❌ [LOGIN_EMAIL] Error general: $e');
       throw AuthServiceException('UNKNOWN_ERROR', e.toString());
     }
   }
 
-  /// Método para autenticación biométrica
-  Future<UserModel?> loginWithBiometrics() async {
-    try {
-      // Implementación de autenticación biométrica
-      // Este es un método simulado que deberías implementar según tus necesidades
-      final currentUser = await getCurrentUser();
-      return currentUser;
-    } catch (e) {
-      throw AuthServiceException('BIOMETRIC_ERROR', 'Error en autenticación biométrica: ${e.toString()}');
-    }
-  }
-  
-  /// Cierra la sesión del usuario
   Future<void> logout() async {
-    await _supabase.auth.signOut();
+    try {
+      print('🔐 [LOGOUT] Cerrando sesión...');
+      await _supabase.auth.signOut();
+      print('✅ [LOGOUT] Sesión cerrada exitosamente');
+    } catch (e) {
+      print('❌ [LOGOUT] Error al cerrar sesión: $e');
+      throw AuthServiceException('LOGOUT_ERROR', 'Error al cerrar sesión');
+    }
   }
 
-  /// Verifica si hay datos biométricos guardados
-  Future<bool> hasBiometricData() async {
-    try {
-      // Implementación para verificar datos biométricos
-      // Este es un método simulado que deberías implementar según tus necesidades
-      return false;
-    } catch (e) {
-      return false;
-    }
-  }
   Future<UserModel> registerUser({
     required String email,
     required String password,
@@ -133,13 +170,7 @@ class AuthService {
   }) async {
     try {
       print('📝 [REGISTER] Iniciando registro de usuario...');
-      print('📝 [REGISTER] Email: $email');
-      print('📝 [REGISTER] Nombre: $name');
-      print('📝 [REGISTER] Rol solicitado: $role');
-      print('📝 [REGISTER] DNI: ${dni ?? "No proporcionado"}');
 
-      // PASO 1: Crear usuario en auth.users
-      print('🔐 [REGISTER] Creando usuario en auth.users...');
       final response = await _supabase.auth.signUp(
         email: email,
         password: password,
@@ -147,7 +178,6 @@ class AuthService {
 
       final user = response.user;
       if (user == null) {
-        print('❌ [REGISTER] No se pudo crear el usuario en Auth');
         throw AuthServiceException(
           'USER_CREATION_FAILED',
           'No se pudo crear el usuario en el sistema de autenticación.',
@@ -155,12 +185,6 @@ class AuthService {
       }
 
       print('✅ [REGISTER] Usuario creado en auth.users con ID: ${user.id}');
-      print(
-        '📧 [REGISTER] Email de confirmación enviado: ${response.session == null}',
-      );
-
-      // PASO 2: Crear perfil en public.users usando RPC
-      print('🔄 [REGISTER] Creando perfil en public.users...');
 
       try {
         final profileResponse = await _supabase.rpc(
@@ -176,40 +200,27 @@ class AuthService {
           },
         );
 
-        print('📦 [REGISTER] Respuesta de register_user: $profileResponse');
-
-        // Validar respuesta
         if (profileResponse == null) {
-          print('❌ [REGISTER] La función register_user retornó null');
           throw UserProfileException(
             'PROFILE_CREATION_FAILED',
             'No se recibió respuesta al crear el perfil de usuario.',
           );
         }
 
-        // Parsear respuesta JSON
         final result = profileResponse as Map<String, dynamic>;
         final success = result['success'] as bool? ?? false;
         final message = result['message'] as String? ?? 'Error desconocido';
 
         if (!success) {
           print('❌ [REGISTER] Error al crear perfil: $message');
-
-          // Si el perfil falló pero el usuario de Auth se creó, intentar eliminarlo
-          print('🧹 [REGISTER] Intentando limpiar usuario de auth.users...');
           try {
             await _supabase.auth.signOut(scope: SignOutScope.local);
-          } catch (cleanupError) {
-            print('⚠️ [REGISTER] Error al limpiar usuario: $cleanupError');
-          }
-
+          } catch (_) {}
           throw UserProfileException('PROFILE_CREATION_FAILED', message);
         }
 
         print('✅ [REGISTER] Perfil creado exitosamente');
-        print('👤 [REGISTER] Usuario registrado: $email (${result['role']})');
 
-        // Retornar UserModel
         return UserModel(
           id: user.id,
           name: name,
@@ -220,28 +231,12 @@ class AuthService {
           phone: phone,
           address: address,
         );
-      } on PostgrestException catch (e) {
-        print('❌ [REGISTER] Error PostgrestException: ${e.message}');
-        print('❌ [REGISTER] Código: ${e.code}');
-        print('❌ [REGISTER] Detalles: ${e.details}');
-
-        // Limpiar usuario de Auth
-        try {
-          await _supabase.auth.signOut(scope: SignOutScope.local);
-        } catch (_) {}
-
-        throw UserProfileException(
-          'DATABASE_ERROR',
-          'Error de base de datos: ${e.message}',
-        );
       } catch (e) {
         print('❌ [REGISTER] Error al crear perfil: $e');
-
-        // Limpiar usuario de Auth
         try {
           await _supabase.auth.signOut(scope: SignOutScope.local);
         } catch (_) {}
-
+        if (e is UserProfileException) rethrow;
         throw UserProfileException(
           'PROFILE_CREATION_FAILED',
           'Error al crear el perfil de usuario: ${e.toString()}',
@@ -250,7 +245,6 @@ class AuthService {
     } on AuthException catch (e) {
       print('❌ [REGISTER] Error AuthException: ${e.message}');
 
-      // Errores comunes de Supabase Auth
       String userMessage;
       switch (e.message) {
         case 'User already registered':
@@ -265,20 +259,303 @@ class AuthService {
         default:
           userMessage = 'Error de registro: ${e.message}';
       }
-
       throw AuthServiceException('AUTH_ERROR', userMessage);
     } catch (e) {
       print('❌ [REGISTER] Error general: $e');
-      print('❌ [REGISTER] Tipo de error: ${e.runtimeType}');
-
       if (e is AuthServiceException || e is UserProfileException) {
         rethrow;
       }
-
       throw AuthServiceException(
         'UNKNOWN_ERROR',
         'Error desconocido durante el registro: ${e.toString()}',
       );
+    }
+  }
+
+  // ==========================================================================
+  // MÉTODOS DE AUTENTICACIÓN BIOMÉTRICA
+  // ==========================================================================
+
+  Future<UserModel?> loginWithBiometrics() async {
+    try {
+      print('🔐 [LOGIN_BIOMETRIC] Iniciando login biométrico...');
+
+      final authenticated = await _biometricService.authenticate(
+        'Autentícate para acceder a la aplicación',
+      );
+
+      if (!authenticated) {
+        print(
+          '❌ [LOGIN_BIOMETRIC] Autenticación biométrica fallida o cancelada',
+        );
+        throw BiometricAuthException(
+          'AUTH_FAILED',
+          'Autenticación biométrica fallida o cancelada',
+        );
+      }
+
+      print('✅ [LOGIN_BIOMETRIC] Autenticación biométrica exitosa');
+
+      final refreshToken = await _secureStorage.read(key: _keyRefreshToken);
+      final deviceId = await _secureStorage.read(key: _keyDeviceId);
+      final userEmail = await _secureStorage.read(key: _keyUserEmail);
+
+      if (refreshToken == null || deviceId == null) {
+        print('❌ [LOGIN_BIOMETRIC] Credenciales no encontradas');
+        await _clearBiometricData();
+        throw BiometricAuthException(
+          'CREDENTIALS_NOT_FOUND',
+          'Credenciales biométricas no encontradas',
+        );
+      }
+
+      print('📱 [LOGIN_BIOMETRIC] Credenciales encontradas para: $userEmail');
+      print('🔄 [LOGIN_BIOMETRIC] Intentando refrescar sesión...');
+
+      final response = await _supabase.auth.refreshSession(refreshToken);
+
+      if (response.session == null || response.user == null) {
+        print('❌ [LOGIN_BIOMETRIC] No se pudo refrescar la sesión');
+        await _clearBiometricData();
+        throw BiometricAuthException(
+          'SESSION_EXPIRED',
+          'Sesión biométrica expirada. Inicia sesión manualmente.',
+        );
+      }
+
+      print('✅ [LOGIN_BIOMETRIC] Sesión refrescada exitosamente');
+
+      final userData = await _supabase
+          .from('users')
+          .select()
+          .eq('id', response.user!.id)
+          .single();
+
+      final storedDeviceId = userData['device_id'] as String?;
+      if (storedDeviceId != null && storedDeviceId != deviceId) {
+        print('❌ [LOGIN_BIOMETRIC] Device ID no coincide');
+        await _clearBiometricData();
+        throw BiometricAuthException(
+          'DEVICE_MISMATCH',
+          'Este dispositivo no coincide con el registrado. Inicia sesión manualmente.',
+        );
+      }
+
+      print('✅ [LOGIN_BIOMETRIC] Device ID verificado correctamente');
+      await _renewBiometricCredentials(response.session!);
+
+      final user = UserModel(
+        id: response.user!.id,
+        name: userData['name'],
+        email: userData['email'],
+        role: UserModel.roleFromString(userData['role']),
+        biometricEnabled: userData['biometric_enabled'] ?? false,
+        biometricToken: userData['biometric_token'],
+        deviceId: userData['device_id'],
+        dni: userData['dni'],
+        phone: userData['phone'],
+        address: userData['address'],
+      );
+
+      print(
+        '✅ [LOGIN_BIOMETRIC] Login biométrico completado para: ${user.email}',
+      );
+      return user;
+    } on BiometricAuthException {
+      rethrow;
+    } catch (e) {
+      print('❌ [LOGIN_BIOMETRIC] Error inesperado: $e');
+      await _clearBiometricData();
+      throw BiometricAuthException(
+        'UNKNOWN_ERROR',
+        'Error en autenticación biométrica: ${e.toString()}',
+      );
+    }
+  }
+
+  Future<Map<String, dynamic>> enableBiometricForCurrentUser() async {
+    try {
+      print('🔐 [BIOMETRIC] Iniciando habilitación de biometría...');
+
+      final session = _supabase.auth.currentSession;
+      final user = _supabase.auth.currentUser;
+
+      if (session == null || user == null) {
+        print('❌ [BIOMETRIC] No hay sesión activa');
+        return {
+          'success': false,
+          'message': 'No hay sesión activa. Inicia sesión primero.',
+        };
+      }
+
+      print('✅ [BIOMETRIC] Sesión válida');
+
+      final authenticated = await _biometricService.authenticate(
+        'Autentícate para habilitar el acceso biométrico',
+      );
+
+      if (!authenticated) {
+        print('❌ [BIOMETRIC] Autenticación biométrica cancelada');
+        return {
+          'success': false,
+          'message': 'Autenticación biométrica cancelada',
+        };
+      }
+
+      print('✅ [BIOMETRIC] Autenticación biométrica exitosa');
+
+      final deviceId = await _getDeviceId();
+      print('📱 [BIOMETRIC] Device ID: $deviceId');
+
+      await _secureStorage.write(
+        key: _keyRefreshToken,
+        value: session.refreshToken,
+      );
+      await _secureStorage.write(
+        key: _keyAccessToken,
+        value: session.accessToken,
+      );
+      await _secureStorage.write(key: _keyUserEmail, value: user.email);
+      await _secureStorage.write(key: _keyDeviceId, value: deviceId);
+      print('💾 [BIOMETRIC] Credenciales guardadas');
+
+      await _supabase
+          .from('users')
+          .update({
+            'biometric_enabled': true,
+            'device_id': deviceId,
+          })
+          .eq('id', user.id);
+
+      print('✅ [BIOMETRIC] Estado actualizado en BD');
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_keyBiometricEnabled, true);
+
+      print('✅ [BIOMETRIC] Biometría habilitada exitosamente');
+
+      return {'success': true, 'message': 'Biometría habilitada exitosamente'};
+    } catch (e) {
+      print('❌ [BIOMETRIC] Error al habilitar biometría: $e');
+      return {
+        'success': false,
+        'message': 'Error al habilitar biometría: ${e.toString()}',
+      };
+    }
+  }
+
+  Future<Map<String, dynamic>> disableBiometricForCurrentUser() async {
+    try {
+      print('🔐 [BIOMETRIC] Deshabilitando biometría...');
+
+      final user = _supabase.auth.currentUser;
+      if (user == null) {
+        return {'success': false, 'message': 'No hay sesión activa'};
+      }
+
+      await _clearBiometricData();
+
+      await _supabase
+          .from('users')
+          .update({
+            'biometric_enabled': false,
+            'device_id': null,
+          })
+          .eq('id', user.id);
+
+      print('✅ [BIOMETRIC] Biometría deshabilitada exitosamente');
+
+      return {
+        'success': true,
+        'message': 'Biometría deshabilitada exitosamente',
+      };
+    } catch (e) {
+      print('❌ [BIOMETRIC] Error al deshabilitar biometría: $e');
+      return {
+        'success': false,
+        'message': 'Error al deshabilitar biometría: ${e.toString()}',
+      };
+    }
+  }
+
+  Future<bool> checkBiometricStatus() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final isEnabled = prefs.getBool(_keyBiometricEnabled) ?? false;
+
+      if (isEnabled) {
+        final refreshToken = await _secureStorage.read(key: _keyRefreshToken);
+        return refreshToken != null;
+      }
+
+      return false;
+    } catch (e) {
+      print('❌ Error al verificar estado biométrico: $e');
+      return false;
+    }
+  }
+
+  // ==========================================================================
+  // MÉTODOS AUXILIARES PRIVADOS
+  // ==========================================================================
+
+  Future<void> _renewBiometricCredentials(Session session) async {
+    try {
+      print('🔄 [BIOMETRIC] Renovando credenciales biométricas...');
+
+      await _secureStorage.write(
+        key: _keyRefreshToken,
+        value: session.refreshToken,
+      );
+      await _secureStorage.write(
+        key: _keyAccessToken,
+        value: session.accessToken,
+      );
+
+      print('✅ [BIOMETRIC] Credenciales renovadas exitosamente');
+    } catch (e) {
+      print('❌ [BIOMETRIC] Error al renovar credenciales: $e');
+    }
+  }
+
+  Future<void> _clearBiometricData() async {
+    try {
+      print('🧹 [BIOMETRIC] Limpiando datos biométricos...');
+
+      await _secureStorage.delete(key: _keyRefreshToken);
+      await _secureStorage.delete(key: _keyAccessToken);
+      await _secureStorage.delete(key: _keyUserEmail);
+      await _secureStorage.delete(key: _keyDeviceId);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_keyBiometricEnabled);
+
+      print('✅ [BIOMETRIC] Datos biométricos limpiados');
+    } catch (e) {
+      print('❌ [BIOMETRIC] Error al limpiar datos: $e');
+    }
+  }
+
+  Future<String> _getDeviceId() async {
+    try {
+      final deviceInfo = DeviceInfoPlugin();
+      String deviceId;
+
+      if (Platform.isAndroid) {
+        final androidInfo = await deviceInfo.androidInfo;
+        deviceId = androidInfo.id;
+      } else if (Platform.isIOS) {
+        final iosInfo = await deviceInfo.iosInfo;
+        deviceId = iosInfo.identifierForVendor ?? 'unknown_ios';
+      } else {
+        deviceId = 'unknown_platform';
+      }
+
+      final user = _supabase.auth.currentUser;
+      return '${deviceId}_${user?.id ?? "unknown"}';
+    } catch (e) {
+      print('❌ Error al obtener Device ID: $e');
+      return 'error_device_id';
     }
   }
 }

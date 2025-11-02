@@ -7,14 +7,12 @@ import '../presentation/providers/auth_provider.dart';
 import '../presentation/screens/auth/login_screen.dart';
 import '../presentation/screens/auth/register_screen.dart';
 import '../presentation/screens/dashboard/dashboard_screen.dart';
+// ✅ RUTA CORREGIDA: Usar solo una ubicación
 import '../presentation/screens/biometric_setup_screen.dart';
 
-// Creamos una instancia del router.
 final GoRouter router = GoRouter(
-  // Escucha los cambios en AuthProvider
   refreshListenable: locator<AuthProvider>(),
 
-  // Definimos las rutas de la app
   routes: [
     GoRoute(path: '/', builder: (context, state) => const DashboardScreen()),
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
@@ -28,7 +26,6 @@ final GoRouter router = GoRouter(
     ),
   ],
 
-  // Lógica de redirección
   redirect: (BuildContext context, GoRouterState state) {
     final authProvider = context.read<AuthProvider>();
     final authStatus = authProvider.status;
@@ -39,22 +36,18 @@ final GoRouter router = GoRouter(
 
     // Si está autenticado
     if (authStatus == AuthStatus.authenticated) {
-      // Si está en una ruta pública (login/register), llévalo al home
       if (isPublicRoute) {
         return '/';
       }
-      // Si no, déjalo donde está
       return null;
     }
 
     // Si NO está autenticado
     if (authStatus == AuthStatus.unauthenticated ||
         authStatus == AuthStatus.error) {
-      // Si intenta entrar a una ruta protegida, llévalo al login
       if (!isPublicRoute) {
         return '/login';
       }
-      // Si ya está en login/register, déjalo ahí
       return null;
     }
 

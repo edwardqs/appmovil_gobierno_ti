@@ -6,18 +6,26 @@ class AuditService {
   /// Maneja errores de logging de auditoría de manera consistente
   void _handleAuditError(dynamic error, String operation) {
     if (error.toString().contains('row-level security policy')) {
-      print('⚠️ [AUDIT] RLS policy blocking audit log insertion for $operation');
-      print('   To fix: Execute supabase_audit_logs_fix.sql in Supabase SQL Editor');
+      print(
+        '⚠️ [AUDIT] RLS policy blocking audit log insertion for $operation',
+      );
+      print(
+        '   To fix: Execute supabase_audit_logs_fix.sql in Supabase SQL Editor',
+      );
     } else {
       print('❌ Error logging $operation: $error');
     }
   }
 
   /// Registra un intento de login en la base de datos
-  Future<void> logLoginAttempt(String email, {required bool success, String? error}) async {
+  Future<void> logLoginAttempt(
+    String email, {
+    required bool success,
+    String? error,
+  }) async {
     try {
       final currentUser = _supabase.auth.currentUser;
-      
+
       await _supabase.from('audit_logs').insert({
         'user_id': currentUser?.id,
         'user_email': email,
@@ -28,10 +36,12 @@ class AuditService {
         'details': {
           'login_attempt': true,
           'timestamp': DateTime.now().toIso8601String(),
-        }
+        },
       });
 
-      print('✅ Login attempt logged for $email: ${success ? 'SUCCESS' : 'FAILURE'}');
+      print(
+        '✅ Login attempt logged for $email: ${success ? 'SUCCESS' : 'FAILURE'}',
+      );
     } catch (e) {
       _handleAuditError(e, 'login attempt');
       // No lanzamos excepción para no interrumpir el flujo de login
@@ -47,9 +57,7 @@ class AuditService {
         'action': 'logout',
         'resource_type': 'user',
         'success': true,
-        'details': {
-          'logout_timestamp': DateTime.now().toIso8601String(),
-        }
+        'details': {'logout_timestamp': DateTime.now().toIso8601String()},
       });
 
       print('✅ Logout logged for user: $email');
@@ -70,7 +78,7 @@ class AuditService {
         'details': {
           'biometric_enabled': enabled,
           'timestamp': DateTime.now().toIso8601String(),
-        }
+        },
       });
 
       print('✅ Biometric action logged: ${enabled ? 'enabled' : 'disabled'}');
@@ -83,7 +91,7 @@ class AuditService {
   Future<void> logImageUpload(String riskId, String imagePath) async {
     try {
       final currentUser = _supabase.auth.currentUser;
-      
+
       await _supabase.from('audit_logs').insert({
         'user_id': currentUser?.id,
         'action': 'upload_image',
@@ -93,7 +101,7 @@ class AuditService {
         'details': {
           'image_path': imagePath,
           'timestamp': DateTime.now().toIso8601String(),
-        }
+        },
       });
 
       print('✅ Image upload logged for risk: $riskId');
@@ -106,7 +114,7 @@ class AuditService {
   Future<void> logAiAnalysis(String riskId) async {
     try {
       final currentUser = _supabase.auth.currentUser;
-      
+
       await _supabase.from('audit_logs').insert({
         'user_id': currentUser?.id,
         'action': 'generate_ai_analysis',
@@ -116,7 +124,7 @@ class AuditService {
         'details': {
           'analysis_generated': true,
           'timestamp': DateTime.now().toIso8601String(),
-        }
+        },
       });
 
       print('✅ AI analysis logged for risk: $riskId');
@@ -132,9 +140,7 @@ class AuditService {
     String? action,
   }) async {
     try {
-      var query = _supabase
-          .from('audit_logs')
-          .select('*');
+      var query = _supabase.from('audit_logs').select('*');
 
       if (userId != null) {
         query = query.eq('user_id', userId);
@@ -147,7 +153,7 @@ class AuditService {
       final response = await query
           .order('created_at', ascending: false)
           .limit(limit);
-      
+
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       print('❌ Error getting audit logs: $e');
@@ -162,10 +168,13 @@ class AuditService {
           .from('audit_logs')
           .select('action, created_at')
           .eq('user_id', userId)
-          .gte('created_at', DateTime.now().subtract(const Duration(days: 30)).toIso8601String());
+          .gte(
+            'created_at',
+            DateTime.now().subtract(const Duration(days: 30)).toIso8601String(),
+          );
 
       final logs = List<Map<String, dynamic>>.from(response);
-      
+
       // Contar acciones por tipo
       final actionCounts = <String, int>{};
       for (final log in logs) {

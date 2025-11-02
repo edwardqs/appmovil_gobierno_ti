@@ -1,15 +1,38 @@
-// lib/data/services/risk_service.dart
-
 import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/risk_model.dart';
 import '../models/user_model.dart';
-import 'audit_service.dart';
 import 'package:uuid/uuid.dart';
 
+// ============================================================================
+// EXCEPCIONES PERSONALIZADAS
+// ============================================================================
+
+class RiskServiceException implements Exception {
+  final String code;
+  final String message;
+
+  RiskServiceException(this.code, this.message);
+
+  @override
+  String toString() => 'RiskServiceException: [$code] $message';
+}
+
+// ============================================================================
+// RISK SERVICE
+// ============================================================================
+
 class RiskService {
-  final SupabaseClient _supabase = Supabase.instance.client;
-  final AuditService _auditService = AuditService();
+  // ✅ CORREGIDO: Ahora usa una instancia pasada por parámetro o la por defecto
+  final SupabaseClient _supabase;
+
+  // Constructor que acepta un SupabaseClient opcional
+  RiskService([SupabaseClient? supabaseClient])
+    : _supabase = supabaseClient ?? Supabase.instance.client;
+
+  // ==========================================================================
+  // GENERACIÓN DE IDs
+  // ==========================================================================
 
   /// Genera un nuevo ID único para un riesgo (UUID)
   String generateNewId() {
@@ -17,145 +40,230 @@ class RiskService {
     return uuid.v4();
   }
 
+  // ==========================================================================
+  // GESTIÓN DE IMÁGENES
+  // ==========================================================================
+
   /// Sube una imagen a Supabase Storage y retorna la URL pública
   Future<String?> uploadImage(String imagePath, String riskId) async {
     try {
       print('📸 [UPLOAD_IMAGE] Iniciando subida de imagen: $imagePath');
-      
+
       final file = File(imagePath);
       if (!await file.exists()) {
         print('❌ [UPLOAD_IMAGE] Archivo no encontrado: $imagePath');
-        return null;
+        throw RiskServiceException(
+          'FILE_NOT_FOUND',
+          'El archivo de imagen no existe',
+        );
       }
 
-      print('✅ [UPLOAD_IMAGE] Archivo existe, tamaño: ${await file.length()} bytes');
+      final fileSize = await file.length();
+      print('✅ [UPLOAD_IMAGE] Archivo existe, tamaño: $fileSize bytes');
+
+      // Validar tamaño máximo (10MB)
+      if (fileSize > 10 * 1024 * 1024) {
+        throw RiskServiceException(
+          'FILE_TOO_LARGE',
+          'La imagen es demasiado grande (máx. 10MB)',
+        );
+      }
 
       // Generar nombre único para la imagen
-      final fileName = '${riskId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final extension = imagePath.split('.').last.toLowerCase();
+      final fileName = '${riskId}_$timestamp.$extension';
       final filePath = 'risk-images/$fileName';
-      
+
       print('🔄 [UPLOAD_IMAGE] Nombre de archivo generado: $fileName');
       print('🔄 [UPLOAD_IMAGE] Ruta en storage: $filePath');
 
-      // Intentar subir archivo a Supabase Storage
-      // Primero intentamos con 'images', luego con 'risk-attachments'
       String? publicUrl;
-      
-      try {
-        print('🔄 [UPLOAD_IMAGE] Intentando subir a bucket "images"...');
-        await _supabase.storage
-            .from('images')
-            .upload(filePath, file);
-        
-        publicUrl = _supabase.storage
-            .from('images')
-            .getPublicUrl(filePath);
-        
-        print('✅ [UPLOAD_IMAGE] Subida exitosa a bucket "images"');
-      } catch (e) {
-        print('⚠️ [UPLOAD_IMAGE] Bucket "images" no disponible: $e');
-        print('🔄 [UPLOAD_IMAGE] Intentando con bucket "risk-attachments"...');
-        
+
+      // Intentar subir a diferentes buckets
+      final bucketsToTry = ['images', 'risk-attachments', 'risk-images'];
+
+      for (final bucket in bucketsToTry) {
         try {
+          print('🔄 [UPLOAD_IMAGE] Intentando subir a bucket "$bucket"...');
+
           await _supabase.storage
-              .from('risk-attachments')
-              .upload(filePath, file);
-          
-          publicUrl = _supabase.storage
-              .from('risk-attachments')
-              .getPublicUrl(filePath);
-          
-          print('✅ [UPLOAD_IMAGE] Subida exitosa a bucket "risk-attachments"');
-        } catch (e2) {
-          print('❌ [UPLOAD_IMAGE] Error con ambos buckets:');
-          print('   - Error bucket "images": $e');
-          print('   - Error bucket "risk-attachments": $e2');
-          print('   Necesitas crear un bucket en Supabase Storage');
-          print('   Bucket sugerido: "images" o "risk-attachments"');
-          return null;
+              .from(bucket)
+              .upload(
+                filePath,
+                file,
+                fileOptions: const FileOptions(
+                  cacheControl: '3600',
+                  upsert: false,
+                ),
+              );
+
+          publicUrl = _supabase.storage.from(bucket).getPublicUrl(filePath);
+
+          print('✅ [UPLOAD_IMAGE] Subida exitosa a bucket "$bucket"');
+          break;
+        } catch (e) {
+          print('⚠️ [UPLOAD_IMAGE] Bucket "$bucket" no disponible: $e');
+
+          if (bucket == bucketsToTry.last) {
+            throw RiskServiceException(
+              'STORAGE_ERROR',
+              'No se pudo subir la imagen. Verifica la configuración de Storage en Supabase.',
+            );
+          }
         }
+      }
+
+      if (publicUrl == null) {
+        throw RiskServiceException(
+          'UPLOAD_FAILED',
+          'No se pudo obtener la URL pública de la imagen',
+        );
       }
 
       print('🔄 [UPLOAD_IMAGE] URL pública generada: $publicUrl');
 
-      // Registrar en auditoría
-      try {
-        await _auditService.logImageUpload(riskId, publicUrl!);
-        print('✅ [UPLOAD_IMAGE] Auditoría registrada');
-      } catch (e) {
-        print('⚠️ [UPLOAD_IMAGE] Error al registrar auditoría: $e');
-        // Continuar aunque falle la auditoría
-      }
+      // ✅ Auditoría removida temporalmente
+      // TODO: Implementar sistema de auditoría si es necesario
 
-      print('✅ [UPLOAD_IMAGE] Imagen subida exitosamente: $publicUrl');
+      print('✅ [UPLOAD_IMAGE] Imagen subida exitosamente');
       return publicUrl;
+    } on RiskServiceException {
+      rethrow;
     } catch (e) {
-      print('❌ [UPLOAD_IMAGE] Error general al subir imagen: $e');
-      print('❌ [UPLOAD_IMAGE] Tipo de error: ${e.runtimeType}');
-      return null;
+      print('❌ [UPLOAD_IMAGE] Error general: $e');
+      throw RiskServiceException(
+        'UPLOAD_ERROR',
+        'Error al subir imagen: ${e.toString()}',
+      );
     }
   }
 
   /// Sube múltiples imágenes y retorna las URLs
-  Future<List<String>> uploadImages(List<String> imagePaths, String riskId) async {
+  Future<List<String>> uploadImages(
+    List<String> imagePaths,
+    String riskId,
+  ) async {
+    print('📸 [UPLOAD_IMAGES] Subiendo ${imagePaths.length} imágenes...');
+
     final List<String> uploadedUrls = [];
-    
-    for (String imagePath in imagePaths) {
-      final url = await uploadImage(imagePath, riskId);
-      if (url != null) {
-        uploadedUrls.add(url);
+    final List<String> failedUploads = [];
+
+    for (int i = 0; i < imagePaths.length; i++) {
+      final imagePath = imagePaths[i];
+      print(
+        '📸 [UPLOAD_IMAGES] Procesando imagen ${i + 1}/${imagePaths.length}',
+      );
+
+      try {
+        final url = await uploadImage(imagePath, riskId);
+        if (url != null) {
+          uploadedUrls.add(url);
+        } else {
+          failedUploads.add(imagePath);
+        }
+      } catch (e) {
+        print('❌ [UPLOAD_IMAGES] Error al subir imagen $imagePath: $e');
+        failedUploads.add(imagePath);
       }
     }
-    
-    print('✅ ${uploadedUrls.length}/${imagePaths.length} imágenes subidas exitosamente');
+
+    print(
+      '✅ [UPLOAD_IMAGES] ${uploadedUrls.length}/${imagePaths.length} imágenes subidas exitosamente',
+    );
+
+    if (failedUploads.isNotEmpty) {
+      print('⚠️ [UPLOAD_IMAGES] ${failedUploads.length} imágenes fallaron');
+    }
+
     return uploadedUrls;
   }
+
+  // ==========================================================================
+  // GESTIÓN DE ANÁLISIS IA
+  // ==========================================================================
 
   /// Guarda el análisis de IA para un riesgo específico
   Future<void> saveAiAnalysis(String riskId, String analysisText) async {
     try {
+      print('💾 [AI_ANALYSIS] Guardando análisis para riesgo: $riskId');
+
       await _supabase
           .from('risks')
           .update({'ai_analysis': analysisText})
           .eq('id', riskId);
-      
-      print('✅ Análisis IA guardado para riesgo: $riskId');
+
+      print('✅ [AI_ANALYSIS] Análisis guardado exitosamente');
+
+      // ✅ Auditoría removida temporalmente
+      // TODO: Implementar sistema de auditoría si es necesario
     } catch (e) {
-      print('❌ Error al guardar análisis IA: $e');
-      throw Exception('Error al guardar el análisis IA: $e');
+      print('❌ [AI_ANALYSIS] Error al guardar análisis: $e');
+      throw RiskServiceException(
+        'SAVE_ANALYSIS_ERROR',
+        'Error al guardar el análisis IA: ${e.toString()}',
+      );
     }
   }
+
+  // ==========================================================================
+  // CONSULTAS DE RIESGOS
+  // ==========================================================================
 
   /// Obtiene todos los riesgos desde Supabase
   Future<List<Risk>> getRisks() async {
     try {
+      print('🔍 [GET_RISKS] Obteniendo todos los riesgos...');
+
       final response = await _supabase
           .from('risks')
           .select('*')
           .order('created_at', ascending: false);
 
-      return response.map<Risk>((data) => Risk.fromJson(data)).toList();
+      final risks = (response as List)
+          .map<Risk>((data) => Risk.fromJson(data))
+          .toList();
+
+      print('✅ [GET_RISKS] ${risks.length} riesgos obtenidos');
+      return risks;
     } catch (e) {
-      print('❌ Error al obtener riesgos: $e');
-      throw Exception('Error al cargar los riesgos: $e');
+      print('❌ [GET_RISKS] Error al obtener riesgos: $e');
+      throw RiskServiceException(
+        'FETCH_RISKS_ERROR',
+        'Error al cargar los riesgos: ${e.toString()}',
+      );
     }
   }
 
   /// Obtiene riesgos asignados a un usuario específico
   Future<List<Risk>> getRisksByUser(String userId) async {
     try {
+      print('🔍 [GET_RISKS_BY_USER] Obteniendo riesgos para usuario: $userId');
+
       final response = await _supabase
           .from('risks')
           .select('*')
           .eq('assigned_user_id', userId)
           .order('created_at', ascending: false);
 
-      return response.map<Risk>((data) => Risk.fromJson(data)).toList();
+      final risks = (response as List)
+          .map<Risk>((data) => Risk.fromJson(data))
+          .toList();
+
+      print('✅ [GET_RISKS_BY_USER] ${risks.length} riesgos encontrados');
+      return risks;
     } catch (e) {
-      print('❌ Error al obtener riesgos del usuario: $e');
-      throw Exception('Error al cargar los riesgos del usuario: $e');
+      print('❌ [GET_RISKS_BY_USER] Error: $e');
+      throw RiskServiceException(
+        'FETCH_USER_RISKS_ERROR',
+        'Error al cargar los riesgos del usuario: ${e.toString()}',
+      );
     }
   }
+
+  // ==========================================================================
+  // CREACIÓN Y ACTUALIZACIÓN DE RIESGOS
+  // ==========================================================================
 
   /// Agrega un nuevo riesgo a Supabase
   Future<Risk> addRisk(Risk newRisk) async {
@@ -164,13 +272,16 @@ class RiskService {
       print('🔄 [ADD_RISK] Título: ${newRisk.title}');
       print('🔄 [ADD_RISK] Asset: ${newRisk.asset}');
       print('🔄 [ADD_RISK] Imágenes a subir: ${newRisk.imagePaths.length}');
-      
+
       final currentUser = _supabase.auth.currentUser;
       if (currentUser == null) {
         print('❌ [ADD_RISK] Usuario no autenticado');
-        throw Exception('Usuario no autenticado');
+        throw RiskServiceException(
+          'NOT_AUTHENTICATED',
+          'Debes estar autenticado para crear riesgos',
+        );
       }
-      
+
       print('✅ [ADD_RISK] Usuario autenticado: ${currentUser.email}');
 
       // Generar ID único para el riesgo
@@ -180,14 +291,15 @@ class RiskService {
       // Subir imágenes si existen
       List<String> imageUrls = [];
       if (newRisk.imagePaths.isNotEmpty) {
-        print('📸 [ADD_RISK] Subiendo ${newRisk.imagePaths.length} imágenes...');
+        print(
+          '📸 [ADD_RISK] Subiendo ${newRisk.imagePaths.length} imágenes...',
+        );
         try {
           imageUrls = await uploadImages(newRisk.imagePaths, riskId);
-          print('✅ [ADD_RISK] Imágenes subidas exitosamente: ${imageUrls.length}');
+          print('✅ [ADD_RISK] ${imageUrls.length} imágenes subidas');
         } catch (e) {
-          print('❌ [ADD_RISK] Error al subir imágenes: $e');
+          print('⚠️ [ADD_RISK] Error al subir imágenes: $e');
           // Continuar sin imágenes si falla la subida
-          imageUrls = [];
         }
       } else {
         print('ℹ️ [ADD_RISK] No hay imágenes para subir');
@@ -202,13 +314,13 @@ class RiskService {
         'impact': newRisk.impact,
         'control_effectiveness': newRisk.controlEffectiveness,
         'comment': newRisk.comment,
-        'image_paths': imageUrls, // Guardar URLs de imágenes subidas
+        'image_paths': imageUrls,
         'assigned_user_id': newRisk.assignedUserId,
         'assigned_user_name': newRisk.assignedUserName,
         'created_by': currentUser.id,
+        'created_at': DateTime.now().toIso8601String(),
       };
 
-      print('🔄 [ADD_RISK] Datos a insertar: $riskData');
       print('🔄 [ADD_RISK] Insertando en Supabase...');
 
       final response = await _supabase
@@ -217,87 +329,18 @@ class RiskService {
           .select()
           .single();
 
-      print('✅ [ADD_RISK] Riesgo creado exitosamente: ${response['id']} con ${imageUrls.length} imágenes');
-      print('✅ [ADD_RISK] Respuesta completa: $response');
-      
+      print('✅ [ADD_RISK] Riesgo creado: ${response['id']}');
+
       final createdRisk = Risk.fromJson(response);
-      print('✅ [ADD_RISK] Riesgo parseado correctamente');
-      
       return createdRisk;
+    } on RiskServiceException {
+      rethrow;
     } catch (e) {
-      print('❌ [ADD_RISK] Error al crear riesgo: $e');
-      print('❌ [ADD_RISK] Tipo de error: ${e.runtimeType}');
-      if (e.toString().contains('duplicate key')) {
-        print('❌ [ADD_RISK] Error de clave duplicada detectado');
-      }
-      if (e.toString().contains('permission')) {
-        print('❌ [ADD_RISK] Error de permisos detectado');
-      }
-      throw Exception('Error al crear el riesgo: $e');
-    }
-  }
-
-  /// Obtiene auditores disponibles usando consulta directa (temporal - sin RLS)
-  Future<List<UserModel>> getAuditors() async {
-    try {
-      print('🔍 [AUDITORS] Obteniendo lista de auditores...');
-      
-      // Temporal: Devolver lista hardcodeada para evitar problemas de RLS
-      // TODO: Corregir políticas RLS en Supabase
-      return [
-        UserModel(
-          id: 'temp-auditor-1',
-          name: 'Auditor Junior Temporal',
-          email: 'auditor1@temp.com',
-          role: UserRole.auditorJunior,
-          biometricEnabled: false,
-        ),
-        UserModel(
-          id: 'temp-auditor-2', 
-          name: 'Auditor Senior Temporal',
-          email: 'auditor2@temp.com',
-          role: UserRole.auditorSenior,
-          biometricEnabled: false,
-        ),
-      ];
-      
-      /* Código original comentado hasta corregir RLS:
-      final response = await _supabase
-          .from('users')
-          .select('id, name, email, role')
-          .eq('role', 'auditor');
-      
-      print('🔍 [AUDITORS] Respuesta: ${response.length} auditores encontrados');
-      
-      return response.map<UserModel>((data) => UserModel(
-        id: data['id'],
-        name: data['name'],
-        email: data['email'],
-        role: UserModel.roleFromString(data['role']),
-        biometricEnabled: false,
-      )).toList();
-      */
-    } catch (e) {
-      print('❌ Error al obtener auditores: $e');
-      throw Exception('Error al cargar los auditores: $e');
-    }
-  }
-
-  /// Asigna un riesgo a un usuario específico
-  Future<void> assignRiskToUser(String riskId, UserModel user) async {
-    try {
-      await _supabase
-          .from('risks')
-          .update({
-            'assigned_user_id': user.id,
-            'assigned_user_name': user.name,
-          })
-          .eq('id', riskId);
-
-      print('✅ Riesgo $riskId asignado a ${user.name}');
-    } catch (e) {
-      print('❌ Error al asignar riesgo: $e');
-      throw Exception('Error al asignar el riesgo: $e');
+      print('❌ [ADD_RISK] Error: $e');
+      throw RiskServiceException(
+        'CREATE_RISK_ERROR',
+        'Error al crear el riesgo: ${e.toString()}',
+      );
     }
   }
 
@@ -308,29 +351,36 @@ class RiskService {
     String? reviewNotes,
   }) async {
     try {
+      print(
+        '🔄 [UPDATE_STATUS] Actualizando riesgo $riskId a ${newStatus.name}',
+      );
+
       final updateData = <String, dynamic>{
         'status': newStatus.name,
+        'updated_at': DateTime.now().toIso8601String(),
       };
 
       if (reviewNotes != null) {
         updateData['review_notes'] = reviewNotes;
       }
 
-      await _supabase
-          .from('risks')
-          .update(updateData)
-          .eq('id', riskId);
+      await _supabase.from('risks').update(updateData).eq('id', riskId);
 
-      print('✅ Estado del riesgo $riskId actualizado a ${newStatus.name}');
+      print('✅ [UPDATE_STATUS] Estado actualizado exitosamente');
     } catch (e) {
-      print('❌ Error al actualizar estado del riesgo: $e');
-      throw Exception('Error al actualizar el estado del riesgo: $e');
+      print('❌ [UPDATE_STATUS] Error: $e');
+      throw RiskServiceException(
+        'UPDATE_STATUS_ERROR',
+        'Error al actualizar el estado: ${e.toString()}',
+      );
     }
   }
 
   /// Actualiza un riesgo completo
   Future<Risk> updateRisk(Risk risk) async {
     try {
+      print('🔄 [UPDATE_RISK] Actualizando riesgo: ${risk.id}');
+
       final updateData = {
         'title': risk.title,
         'asset': risk.asset,
@@ -343,6 +393,7 @@ class RiskService {
         'assigned_user_name': risk.assignedUserName,
         'review_notes': risk.reviewNotes,
         'ai_analysis': risk.aiAnalysis,
+        'updated_at': DateTime.now().toIso8601String(),
       };
 
       final response = await _supabase
@@ -352,50 +403,143 @@ class RiskService {
           .select()
           .single();
 
-      print('✅ Riesgo ${risk.id} actualizado exitosamente');
+      print('✅ [UPDATE_RISK] Riesgo actualizado exitosamente');
       return Risk.fromJson(response);
     } catch (e) {
-      print('❌ Error al actualizar riesgo: $e');
-      throw Exception('Error al actualizar el riesgo: $e');
+      print('❌ [UPDATE_RISK] Error: $e');
+      throw RiskServiceException(
+        'UPDATE_RISK_ERROR',
+        'Error al actualizar el riesgo: ${e.toString()}',
+      );
     }
   }
+
+  // ==========================================================================
+  // ASIGNACIÓN Y GESTIÓN DE AUDITORES
+  // ==========================================================================
+
+  /// Obtiene auditores disponibles
+  Future<List<UserModel>> getAuditors() async {
+    try {
+      print('🔍 [GET_AUDITORS] Obteniendo lista de auditores...');
+
+      final response = await _supabase
+          .from('users')
+          .select('id, name, email, role')
+          .or('role.eq.auditor_junior,role.eq.auditor_senior');
+
+      final auditors = (response as List)
+          .map<UserModel>(
+            (data) => UserModel(
+              id: data['id'],
+              name: data['name'],
+              email: data['email'],
+              role: UserModel.roleFromString(data['role']),
+              biometricEnabled: false,
+            ),
+          )
+          .toList();
+
+      print('✅ [GET_AUDITORS] ${auditors.length} auditores encontrados');
+      return auditors;
+    } catch (e) {
+      print('⚠️ [GET_AUDITORS] Error: $e');
+      print('⚠️ [GET_AUDITORS] Retornando lista vacía por ahora');
+
+      // Retornar lista vacía en lugar de fallar
+      return [];
+    }
+  }
+
+  /// Asigna un riesgo a un usuario específico
+  Future<void> assignRiskToUser(String riskId, UserModel user) async {
+    try {
+      print('🔄 [ASSIGN_RISK] Asignando riesgo $riskId a ${user.name}');
+
+      await _supabase
+          .from('risks')
+          .update({
+            'assigned_user_id': user.id,
+            'assigned_user_name': user.name,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', riskId);
+
+      print('✅ [ASSIGN_RISK] Riesgo asignado exitosamente');
+    } catch (e) {
+      print('❌ [ASSIGN_RISK] Error: $e');
+      throw RiskServiceException(
+        'ASSIGN_RISK_ERROR',
+        'Error al asignar el riesgo: ${e.toString()}',
+      );
+    }
+  }
+
+  // ==========================================================================
+  // ELIMINACIÓN
+  // ==========================================================================
 
   /// Elimina un riesgo (solo para gerentes)
   Future<void> deleteRisk(String riskId) async {
     try {
-      await _supabase
-          .from('risks')
-          .delete()
-          .eq('id', riskId);
+      print('🔄 [DELETE_RISK] Eliminando riesgo: $riskId');
 
-      print('✅ Riesgo $riskId eliminado exitosamente');
+      await _supabase.from('risks').delete().eq('id', riskId);
+
+      print('✅ [DELETE_RISK] Riesgo eliminado exitosamente');
     } catch (e) {
-      print('❌ Error al eliminar riesgo: $e');
-      throw Exception('Error al eliminar el riesgo: $e');
+      print('❌ [DELETE_RISK] Error: $e');
+      throw RiskServiceException(
+        'DELETE_RISK_ERROR',
+        'Error al eliminar el riesgo: ${e.toString()}',
+      );
     }
   }
 
-  /// Obtiene estadísticas del dashboard usando la función de Supabase
+  // ==========================================================================
+  // ESTADÍSTICAS
+  // ==========================================================================
+
+  /// Obtiene estadísticas del dashboard
   Future<Map<String, dynamic>> getDashboardStats({String? userId}) async {
     try {
+      print('📊 [DASHBOARD_STATS] Obteniendo estadísticas...');
+
       final response = await _supabase.rpc(
         'get_dashboard_stats',
         params: userId != null ? {'user_id_param': userId} : {},
       );
 
+      print('✅ [DASHBOARD_STATS] Estadísticas obtenidas');
       return Map<String, dynamic>.from(response);
     } catch (e) {
-      print('❌ Error al obtener estadísticas: $e');
-      throw Exception('Error al cargar las estadísticas: $e');
+      print('❌ [DASHBOARD_STATS] Error: $e');
+      throw RiskServiceException(
+        'STATS_ERROR',
+        'Error al cargar las estadísticas: ${e.toString()}',
+      );
     }
   }
 
+  // ==========================================================================
+  // COMENTARIOS
+  // ==========================================================================
+
   /// Agrega un comentario a un riesgo
-  Future<void> addRiskComment(String riskId, String comment, {String type = 'general'}) async {
+  Future<void> addRiskComment(
+    String riskId,
+    String comment, {
+    String type = 'general',
+  }) async {
     try {
+      print('💬 [ADD_COMMENT] Agregando comentario al riesgo: $riskId');
+
       final currentUser = _supabase.auth.currentUser;
       if (currentUser == null) {
-        throw Exception('Usuario no autenticado');
+        throw RiskServiceException(
+          'NOT_AUTHENTICATED',
+          'Debes estar autenticado para comentar',
+        );
       }
 
       await _supabase.from('risk_comments').insert({
@@ -403,18 +547,24 @@ class RiskService {
         'user_id': currentUser.id,
         'comment': comment,
         'comment_type': type,
+        'created_at': DateTime.now().toIso8601String(),
       });
 
-      print('✅ Comentario agregado al riesgo $riskId');
+      print('✅ [ADD_COMMENT] Comentario agregado exitosamente');
     } catch (e) {
-      print('❌ Error al agregar comentario: $e');
-      throw Exception('Error al agregar el comentario: $e');
+      print('❌ [ADD_COMMENT] Error: $e');
+      throw RiskServiceException(
+        'ADD_COMMENT_ERROR',
+        'Error al agregar el comentario: ${e.toString()}',
+      );
     }
   }
 
   /// Obtiene comentarios de un riesgo
   Future<List<Map<String, dynamic>>> getRiskComments(String riskId) async {
     try {
+      print('💬 [GET_COMMENTS] Obteniendo comentarios del riesgo: $riskId');
+
       final response = await _supabase
           .from('risk_comments')
           .select('''
@@ -424,10 +574,14 @@ class RiskService {
           .eq('risk_id', riskId)
           .order('created_at', ascending: true);
 
+      print('✅ [GET_COMMENTS] Comentarios obtenidos');
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
-      print('❌ Error al obtener comentarios: $e');
-      throw Exception('Error al cargar los comentarios: $e');
+      print('❌ [GET_COMMENTS] Error: $e');
+      throw RiskServiceException(
+        'GET_COMMENTS_ERROR',
+        'Error al cargar los comentarios: ${e.toString()}',
+      );
     }
   }
 }

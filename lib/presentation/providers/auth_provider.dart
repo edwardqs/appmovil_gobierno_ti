@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:app_gobiernoti/data/models/user_model.dart';
-import 'package:app_gobiernoti/data/services/auth_service.dart';
-import 'package:app_gobiernoti/core/locator.dart';
+import '../../data/models/user_model.dart';
+import '../../data/services/auth_service.dart';
+import '../../core/locator.dart';
 
-// 1. Enum para manejar los estados de autenticación
+// ============================================================================
+// ENUM PARA ESTADOS DE AUTENTICACIÓN
+// ============================================================================
+
 enum AuthStatus {
   uninitialized,
   authenticated,
@@ -12,84 +15,143 @@ enum AuthStatus {
   error,
 }
 
+// ============================================================================
+// AUTH PROVIDER
+// ============================================================================
+
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = locator<AuthService>();
 
-  // 2. Estados privados
+  // Estados privados
   AuthStatus _status = AuthStatus.uninitialized;
   UserModel? _user;
   String? _errorMessage;
-  bool _hasBiometricData = false; // Solo para la UI (saber si mostrar el botón)
+  bool _hasBiometricData = false;
 
-  // 3. Getters públicos
+  // Getters públicos
   AuthStatus get status => _status;
   UserModel? get currentUser => _user;
   String? get errorMessage => _errorMessage;
   bool get hasBiometricData => _hasBiometricData;
 
-  // 4. Constructor
+  // Constructor
   AuthProvider() {
     _initializeApp();
   }
 
+  // ==========================================================================
+  // INICIALIZACIÓN
+  // ==========================================================================
+
   /// Inicializa la app, comprueba la sesión y el estado biométrico
   Future<void> _initializeApp() async {
+    print('🚀 [AUTH_PROVIDER] Inicializando aplicación...');
+
     _status = AuthStatus.loading;
     notifyListeners();
 
-    // Comprueba si el indicador biométrico está habilitado
+    // Verificar estado biométrico
     await checkBiometricStatus();
+    print('🔐 [AUTH_PROVIDER] Estado biométrico: $_hasBiometricData');
 
-    // Al iniciar, asumimos que no está autenticado.
-    // El router se encargará de redirigir a /login
-    _status = AuthStatus.unauthenticated;
+    // Verificar si hay sesión activa
+    try {
+      final user = await _authService.getCurrentUser();
+      if (user != null) {
+        print('✅ [AUTH_PROVIDER] Sesión activa encontrada: ${user.email}');
+        _user = user;
+        _status = AuthStatus.authenticated;
+      } else {
+        print('ℹ️ [AUTH_PROVIDER] No hay sesión activa');
+        _status = AuthStatus.unauthenticated;
+      }
+    } catch (e) {
+      print('❌ [AUTH_PROVIDER] Error al verificar sesión: $e');
+      _status = AuthStatus.unauthenticated;
+    }
+
     notifyListeners();
+    print('✅ [AUTH_PROVIDER] Inicialización completada. Estado: $_status');
   }
+
+  // ==========================================================================
+  // AUTENTICACIÓN CON EMAIL/PASSWORD
+  // ==========================================================================
 
   /// Inicia sesión con Email y Contraseña
   Future<void> login(String email, String password) async {
+    print('🔐 [AUTH_PROVIDER] Iniciando login con email: $email');
+
     _status = AuthStatus.loading;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      // Usamos el método login del servicio
+      // ✅ CORREGIDO: Usa el método login() del servicio
       _user = await _authService.login(email, password);
       _status = AuthStatus.authenticated;
 
-      // Sincroniza el estado biométrico (si está habilitado en el dispositivo)
+      print('✅ [AUTH_PROVIDER] Login exitoso: ${_user!.email}');
+
+      // Sincroniza el estado biométrico
       await checkBiometricStatus();
-      if (_user != null) {
-        _user = _user!.copyWith(biometricEnabled: _hasBiometricData);
+      if (_user != null && _hasBiometricData) {
+        _user = _user!.copyWith(biometricEnabled: true);
       }
-    } catch (e) {
+    } on AuthServiceException catch (e) {
+      print('❌ [AUTH_PROVIDER] Error de AuthService: ${e.message}');
       _status = AuthStatus.error;
-      _errorMessage = e.toString().replaceFirst("Exception: ", "");
+      _errorMessage = e.message;
+    } catch (e) {
+      print('❌ [AUTH_PROVIDER] Error inesperado en login: $e');
+      _status = AuthStatus.error;
+      _errorMessage = 'Error inesperado: ${e.toString()}';
     }
+
     notifyListeners();
   }
+
+  // ==========================================================================
+  // CIERRE DE SESIÓN
+  // ==========================================================================
 
   /// Cierra la sesión
   Future<void> logout() async {
+    print('🔐 [AUTH_PROVIDER] Iniciando logout...');
+
     _status = AuthStatus.loading;
     notifyListeners();
 
-    await _authService.signOut();
-    _user = null;
-    _status = AuthStatus.unauthenticated;
-    // No cambiamos _hasBiometricData, el token sigue guardado
-    // para que el usuario pueda volver a iniciar sesión con huella.
+    try {
+      // ✅ CORREGIDO: Usa logout() en lugar de signOut()
+      await _authService.logout();
+
+      _user = null;
+      _status = AuthStatus.unauthenticated;
+
+      print('✅ [AUTH_PROVIDER] Logout exitoso');
+    } catch (e) {
+      print('❌ [AUTH_PROVIDER] Error en logout: $e');
+      // Aunque falle, limpiamos el estado local
+      _user = null;
+      _status = AuthStatus.unauthenticated;
+    }
+
     notifyListeners();
   }
+
+  // ==========================================================================
+  // AUTENTICACIÓN BIOMÉTRICA
+  // ==========================================================================
 
   /// Inicia sesión con Biometría
   Future<void> loginWithBiometrics() async {
     print('🔐 [AUTH_PROVIDER] Iniciando loginWithBiometrics...');
     print('🔐 [AUTH_PROVIDER] Estado actual: $_status');
-    
+
     // Evitar múltiples intentos simultáneos
     if (_status == AuthStatus.loading) {
-      print('⚠️ [AUTH_PROVIDER] Intento de login biométrico ya en progreso, ignorando...');
+      print('⚠️ [AUTH_PROVIDER] Login biométrico ya en progreso, ignorando...');
       return;
     }
 
@@ -99,44 +161,125 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      print('🔐 [AUTH_PROVIDER] Llamando a _authService.loginWithBiometrics()...');
+      print(
+        '🔐 [AUTH_PROVIDER] Llamando a _authService.loginWithBiometrics()...',
+      );
+
+      // ✅ CORREGIDO: Usa el método correcto del servicio
       _user = await _authService.loginWithBiometrics();
-      
+
       if (_user != null) {
-        print('✅ [AUTH_PROVIDER] Login biométrico exitoso, usuario: ${_user!.email}');
+        print(
+          '✅ [AUTH_PROVIDER] Login biométrico exitoso, usuario: ${_user!.email}',
+        );
         _status = AuthStatus.authenticated;
       } else {
-        // Si loginWithBiometrics retorna null, significa que la autenticación fue cancelada
         print('🚫 [AUTH_PROVIDER] Login biométrico cancelado (usuario null)');
         _status = AuthStatus.unauthenticated;
         _errorMessage = "Autenticación biométrica cancelada";
       }
-    } catch (e) {
-      print('❌ [AUTH_PROVIDER] Error en loginWithBiometrics: $e');
+    } on BiometricAuthException catch (e) {
+      print('❌ [AUTH_PROVIDER] Error BiometricAuthException: ${e.message}');
       _status = AuthStatus.error;
-      String errorMessage = e.toString().replaceFirst("Exception: ", "");
-      
-      // Mejorar mensajes de error específicos para biometría
-      if (errorMessage.contains("BiometricAuthException")) {
-        errorMessage = errorMessage.replaceFirst("BiometricAuthException: ", "");
+
+      // Mejorar mensajes de error específicos
+      String errorMessage = e.message;
+
+      if (e.code == 'CREDENTIALS_NOT_FOUND') {
+        errorMessage =
+            "Credenciales biométricas no encontradas. Inicia sesión manualmente.";
+      } else if (e.code == 'SESSION_EXPIRED' ||
+          e.code == 'CREDENTIALS_EXPIRED') {
+        errorMessage =
+            "Credenciales biométricas expiradas. Inicia sesión manualmente.";
+      } else if (e.code == 'DEVICE_MISMATCH') {
+        errorMessage =
+            "Este dispositivo no coincide con el registrado. Inicia sesión manualmente.";
+      } else if (e.code == 'AUTH_FAILED') {
+        errorMessage = "Autenticación biométrica cancelada o fallida.";
       }
-      if (errorMessage.contains("CREDENTIALS_NOT_FOUND")) {
-        errorMessage = "Credenciales biométricas no encontradas. Inicia sesión manualmente.";
-      } else if (errorMessage.contains("SESSION_EXPIRED") || errorMessage.contains("CREDENTIALS_EXPIRED")) {
-        errorMessage = "Credenciales biométricas expiradas. Inicia sesión manualmente.";
-      } else if (errorMessage.contains("INVALID_SESSION")) {
-        errorMessage = "Sesión biométrica inválida. Inicia sesión manualmente.";
-      }
-      
+
       _errorMessage = errorMessage;
-      print('❌ [AUTH_PROVIDER] Error procesado: $errorMessage');
+    } catch (e) {
+      print('❌ [AUTH_PROVIDER] Error inesperado en loginWithBiometrics: $e');
+      _status = AuthStatus.error;
+      _errorMessage = 'Error en autenticación biométrica: ${e.toString()}';
     }
-    
+
     print('🔄 [AUTH_PROVIDER] Estado final: $_status');
     print('🔄 [AUTH_PROVIDER] Notificando listeners...');
     notifyListeners();
     print('✅ [AUTH_PROVIDER] loginWithBiometrics completado');
   }
+
+  // ==========================================================================
+  // GESTIÓN DE BIOMETRÍA
+  // ==========================================================================
+
+  /// Habilita la biometría
+  Future<Map<String, dynamic>> enableBiometrics() async {
+    print('🔐 [AUTH_PROVIDER] Habilitando biometría...');
+
+    // ✅ CORREGIDO: Usa el método correcto del servicio
+    final result = await _authService.enableBiometricForCurrentUser();
+
+    if (result['success'] == true) {
+      print('✅ [AUTH_PROVIDER] Biometría habilitada exitosamente');
+      _hasBiometricData = true;
+
+      if (_user != null) {
+        _user = _user!.copyWith(biometricEnabled: true);
+      }
+    } else {
+      print(
+        '❌ [AUTH_PROVIDER] Error al habilitar biometría: ${result['message']}',
+      );
+      _errorMessage = result['message'];
+    }
+
+    notifyListeners();
+    return result;
+  }
+
+  /// Deshabilita la biometría
+  Future<Map<String, dynamic>> disableBiometrics() async {
+    print('🔐 [AUTH_PROVIDER] Deshabilitando biometría...');
+
+    // ✅ CORREGIDO: Usa el método correcto del servicio
+    final result = await _authService.disableBiometricForCurrentUser();
+
+    if (result['success'] == true) {
+      print('✅ [AUTH_PROVIDER] Biometría deshabilitada exitosamente');
+      _hasBiometricData = false;
+
+      if (_user != null) {
+        _user = _user!.copyWith(biometricEnabled: false);
+      }
+    } else {
+      print(
+        '❌ [AUTH_PROVIDER] Error al deshabilitar biometría: ${result['message']}',
+      );
+      _errorMessage = result['message'];
+    }
+
+    notifyListeners();
+    return result;
+  }
+
+  /// Comprueba el estado del indicador biométrico
+  Future<void> checkBiometricStatus() async {
+    print('🔍 [AUTH_PROVIDER] Verificando estado biométrico...');
+
+    // ✅ CORREGIDO: Usa el método correcto del servicio
+    _hasBiometricData = await _authService.checkBiometricStatus();
+
+    print('🔍 [AUTH_PROVIDER] Biometría habilitada: $_hasBiometricData');
+    notifyListeners();
+  }
+
+  // ==========================================================================
+  // REGISTRO DE USUARIO
+  // ==========================================================================
 
   /// Registra un nuevo usuario
   Future<bool> register({
@@ -147,80 +290,66 @@ class AuthProvider extends ChangeNotifier {
     String? phone,
     String? address,
   }) async {
+    print('📝 [AUTH_PROVIDER] Iniciando registro para: $email');
+
     _status = AuthStatus.loading;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      // El registro ahora NO devuelve un usuario logueado
-      // Solo registra. El usuario debe confirmar su email (si está habilitado)
-      // y luego hacer login.
+      // ✅ CORREGIDO: Usa el método registerUser del servicio
       await _authService.registerUser(
         email: email,
         password: password,
         name: name,
-        role: "auditor_junior", // Rol por defecto al registrarse
+        role: "auditor_junior", // Rol por defecto
         dni: dni,
         phone: phone,
         address: address,
       );
-      _status = AuthStatus.unauthenticated; // Vuelve a "no autenticado"
+
+      print('✅ [AUTH_PROVIDER] Registro exitoso');
+
+      // El registro no autentica automáticamente
+      _status = AuthStatus.unauthenticated;
       notifyListeners();
+
       return true;
-    } catch (e) {
+    } on AuthServiceException catch (e) {
+      print('❌ [AUTH_PROVIDER] Error de AuthServiceException: ${e.message}');
       _status = AuthStatus.error;
-      _errorMessage = e.toString().replaceFirst("Exception: ", "");
+      _errorMessage = e.message;
+      notifyListeners();
+      return false;
+    } on UserProfileException catch (e) {
+      print('❌ [AUTH_PROVIDER] Error de UserProfileException: ${e.message}');
+      _status = AuthStatus.error;
+      _errorMessage = e.message;
+      notifyListeners();
+      return false;
+    } catch (e) {
+      print('❌ [AUTH_PROVIDER] Error inesperado en registro: $e');
+      _status = AuthStatus.error;
+      _errorMessage = 'Error inesperado: ${e.toString()}';
       notifyListeners();
       return false;
     }
   }
 
-  /// Habilita la biometría
-  Future<Map<String, dynamic>> enableBiometrics() async {
-    // No ponemos loading, es una acción en segundo plano
-    final result = await _authService.enableBiometricForCurrentUser();
-
-    if (result['success'] == true) {
-      _hasBiometricData = true;
-      if (_user != null) {
-        _user = _user!.copyWith(biometricEnabled: true);
-      }
-    } else {
-      _errorMessage = result['message'];
-    }
-    notifyListeners();
-    return result;
-  }
-
-  /// Deshabilita la biometría
-  Future<Map<String, dynamic>> disableBiometrics() async {
-    // No ponemos loading
-    final result = await _authService.disableBiometricForCurrentUser();
-
-    if (result['success'] == true) {
-      _hasBiometricData = false;
-      if (_user != null) {
-        _user = _user!.copyWith(biometricEnabled: false);
-      }
-    } else {
-      _errorMessage = result['message'];
-    }
-    notifyListeners();
-    return result;
-  }
-
-  /// Comprueba el estado del indicador biométrico (de SharedPreferences)
-  Future<void> checkBiometricStatus() async {
-    _hasBiometricData = await _authService.checkBiometricStatus();
-    notifyListeners();
-  }
+  // ==========================================================================
+  // UTILIDADES
+  // ==========================================================================
 
   /// Limpia el mensaje de error
   void clearError() {
+    print('🧹 [AUTH_PROVIDER] Limpiando error...');
+
     _errorMessage = null;
+
     if (_status == AuthStatus.error) {
       _status = AuthStatus.unauthenticated;
     }
+
     notifyListeners();
   }
 }
