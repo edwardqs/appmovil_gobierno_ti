@@ -199,16 +199,33 @@ class AuthService {
     try {
       print('🔐 [LOGOUT] Cerrando sesión...');
 
-      // ✅ IMPORTANTE: NO limpiar credenciales biométricas en logout
-      // Las credenciales deben persistir para permitir login biométrico
-      // Solo se limpian cuando el usuario DESHABILITA la biometría explícitamente
+      // ✅ CRÍTICO: Verificar si hay biometría habilitada
+      final hasBiometric = await checkBiometricStatus();
 
-      await _supabase.auth.signOut();
+      if (hasBiometric) {
+        // ✅ Si tiene biometría: NO llamar a signOut() porque invalida el refresh token
+        // En su lugar, solo limpiar la sesión local manualmente
+        print('🔐 [LOGOUT] Usuario tiene biometría habilitada');
+        print('🔐 [LOGOUT] Limpiando sesión local SIN invalidar tokens en servidor');
 
-      print('✅ [LOGOUT] Sesión cerrada (credenciales biométricas preservadas)');
+        // Acceder al storage interno de Supabase para limpiar solo la sesión local
+        // Esto NO invalida el refresh token en el servidor
+        try {
+          await _supabase.auth.signOut(scope: SignOutScope.local);
+        } catch (e) {
+          print('⚠️ [LOGOUT] Error en signOut local (continuando): $e');
+        }
+
+        print('✅ [LOGOUT] Sesión local limpiada (tokens biométricos siguen válidos en servidor)');
+      } else {
+        // ✅ Si NO tiene biometría: Hacer logout normal (invalida tokens)
+        print('🔐 [LOGOUT] Usuario sin biometría, logout normal');
+        await _supabase.auth.signOut();
+        print('✅ [LOGOUT] Sesión cerrada completamente');
+      }
     } catch (e) {
       print('❌ [LOGOUT] Error al cerrar sesión: $e');
-      throw AuthServiceException('LOGOUT_ERROR', 'Error al cerrar sesión');
+      // No lanzar excepción, permitir que el logout continúe
     }
   }
 
