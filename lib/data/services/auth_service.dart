@@ -363,12 +363,16 @@ class AuthService {
       }
 
       print('📱 [LOGIN_BIOMETRIC] Credenciales encontradas para: $userEmail');
-      print('🔄 [LOGIN_BIOMETRIC] Intentando refrescar sesión...');
+      print('🔄 [LOGIN_BIOMETRIC] Restaurando sesión desde refresh token...');
 
-      final response = await _supabase.auth.refreshSession(refreshToken);
+      // ✅ CRÍTICO: Usar setSession() en lugar de refreshSession()
+      // setSession() RESTAURA una sesión completa desde un refresh token
+      // Funciona incluso si no hay sesión activa (después de logout)
+      // refreshSession() requiere una sesión activa y falla después de signOut()
+      final response = await _supabase.auth.setSession(refreshToken);
 
       if (response.session == null || response.user == null) {
-        print('❌ [LOGIN_BIOMETRIC] No se pudo refrescar la sesión');
+        print('❌ [LOGIN_BIOMETRIC] No se pudo restaurar la sesión');
         await _clearBiometricData();
         throw BiometricAuthException(
           'SESSION_EXPIRED',
@@ -376,7 +380,7 @@ class AuthService {
         );
       }
 
-      print('✅ [LOGIN_BIOMETRIC] Sesión refrescada exitosamente');
+      print('✅ [LOGIN_BIOMETRIC] Sesión restaurada exitosamente');
 
       // ✅ NUEVO: Verificar en tabla user_devices en lugar de users
       final isRegistered = await _deviceService.isDeviceRegistered(
