@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -230,21 +231,21 @@ class AuthService {
       print('📅 [BIOMETRIC] Expira el: $expiresAt');
       print('🕐 [BIOMETRIC] Ahora es: $now');
 
-      String refreshTokenToSave;
+      Session sessionToSave;
 
       if (timeUntilExpiry.inMinutes < 5) {
         print('🔄 [BIOMETRIC] Sesión próxima a expirar, refrescando...');
         // Si la sesión expira pronto, refrescarla primero
         try {
           final refreshResponse = await _supabase.auth.refreshSession(currentSession.refreshToken);
-          if (refreshResponse.session?.refreshToken == null) {
+          if (refreshResponse.session == null) {
             print('❌ [BIOMETRIC] No se pudo refrescar la sesión');
             return {
               'success': false,
               'message': 'Error: No se pudo refrescar la sesión',
             };
           }
-          refreshTokenToSave = refreshResponse.session!.refreshToken!;
+          sessionToSave = refreshResponse.session!;
           print('✅ [BIOMETRIC] Sesión refrescada exitosamente');
         } catch (e) {
           print('❌ [BIOMETRIC] Error al refrescar sesión: $e');
@@ -254,20 +255,34 @@ class AuthService {
           };
         }
       } else {
-        // La sesión es válida, usar el refresh token actual
-        refreshTokenToSave = currentSession.refreshToken!;
-        print('✅ [BIOMETRIC] Usando refresh token actual (sesión válida)');
+        // La sesión es válida, usar la sesión actual
+        sessionToSave = currentSession;
+        print('✅ [BIOMETRIC] Usando sesión actual (sesión válida)');
       }
 
-      // Guardar el refresh token válido
+      // Guardar la sesión completa como JSON
       await _secureStorage.write(
         key: _refreshTokenKey,
-        value: refreshTokenToSave,
+        value: jsonEncode(sessionToSave.toJson()),
         iOptions: _iosOptions,
         aOptions: _androidOptions,
       );
 
-      print('💾 [BIOMETRIC] Refresh token guardado en secure storage');
+      print('💾 [BIOMETRIC] Sesión guardada en secure storage');
+
+      // Actualizar el estado biométrico en la base de datos
+      try {
+        print('🔄 [BIOMETRIC] Actualizando estado biométrico en la base de datos...');
+        await _supabase
+            .from('users')
+            .update({'biometric_enabled': true})
+            .eq('id', currentSession.user.id);
+        
+        print('✅ [BIOMETRIC] Estado biométrico actualizado en la base de datos');
+      } catch (e) {
+        print('⚠️ [BIOMETRIC] Error al actualizar la base de datos: $e');
+        // No fallar completamente, las credenciales locales están guardadas
+      }
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_biometricEnabledKey, true);
@@ -289,6 +304,22 @@ class AuthService {
         aOptions: _androidOptions,
       );
 
+      // Actualizar el estado biométrico en la base de datos
+       final currentSession = _supabase.auth.currentSession;
+       if (currentSession != null) {
+         try {
+           print('🔄 [BIOMETRIC] Deshabilitando biometría en la base de datos...');
+           await _supabase
+               .from('users')
+               .update({'biometric_enabled': false})
+               .eq('id', currentSession.user.id);
+           
+           print('✅ [BIOMETRIC] Estado biométrico deshabilitado en la base de datos');
+         } catch (e) {
+           print('⚠️ [BIOMETRIC] Error al actualizar la base de datos: $e');
+         }
+       }
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_biometricEnabledKey, false);
 
@@ -302,6 +333,7 @@ class AuthService {
   /// Esto permite que el usuario mantenga su preferencia de biometría habilitada.
   Future<void> _clearBiometricCredentials() async {
     try {
+      // Limpiar la sesión JSON guardada
       await _secureStorage.delete(
         key: _refreshTokenKey,
         iOptions: _iosOptions,
@@ -332,6 +364,7 @@ class AuthService {
       final expiresAt = DateTime.fromMillisecondsSinceEpoch(currentSession.expiresAt! * 1000);
       final timeUntilExpiry = expiresAt.difference(now);
 
+      String accessTokenToSave;
       String refreshTokenToSave;
 
       if (timeUntilExpiry.inMinutes < 5) {
@@ -342,6 +375,7 @@ class AuthService {
             print('❌ [BIOMETRIC] No se pudo refrescar la sesión');
             return;
           }
+          accessTokenToSave = refreshResponse.session!.accessToken;
           refreshTokenToSave = refreshResponse.session!.refreshToken!;
           print('✅ [BIOMETRIC] Sesión refrescada exitosamente');
         } catch (e) {
@@ -349,12 +383,20 @@ class AuthService {
           return;
         }
       } else {
-        // La sesión es válida, usar el refresh token actual
+        // La sesión es válida, usar los tokens actuales
+        accessTokenToSave = currentSession.accessToken;
         refreshTokenToSave = currentSession.refreshToken!;
-        print('✅ [BIOMETRIC] Usando refresh token actual (sesión válida)');
+        print('✅ [BIOMETRIC] Usando tokens actuales (sesión válida)');
       }
 
-      // Guardar el refresh token válido
+      // Guardar access token y refresh token por separado
+      await _secureStorage.write(
+        key: '${_refreshTokenKey}_access',
+        value: accessTokenToSave,
+        iOptions: _iosOptions,
+        aOptions: _androidOptions,
+      );
+      
       await _secureStorage.write(
         key: _refreshTokenKey,
         value: refreshTokenToSave,
@@ -386,14 +428,15 @@ class AuthService {
 
       print('✅ [LOGIN_BIOMETRIC] Autenticación biométrica exitosa');
 
-      final refreshToken = await _secureStorage.read(
+      // Leer la sesión JSON guardada
+      final sessionJson = await _secureStorage.read(
         key: _refreshTokenKey,
         iOptions: _iosOptions,
         aOptions: _androidOptions,
       );
 
-      if (refreshToken == null) {
-        print('❌ [LOGIN_BIOMETRIC] No se encontró refresh token guardado');
+      if (sessionJson == null) {
+        print('❌ [LOGIN_BIOMETRIC] No se encontró sesión guardada');
         // Solo limpiar credenciales, mantener biometría habilitada para que el usuario no tenga que reconfigurarla
         await _clearBiometricCredentials();
         throw BiometricAuthException(
@@ -402,38 +445,45 @@ class AuthService {
         );
       }
 
-      print('📱 [LOGIN_BIOMETRIC] Refresh token encontrado, intentando establecer sesión...');
+      print('📱 [LOGIN_BIOMETRIC] Sesión encontrada, intentando recuperar sesión...');
 
-      // Usar setSession en lugar de refreshSession para establecer una sesión completa
-      final response = await _supabase.auth.setSession(refreshToken);
+      try {
+        // Usar recoverSession con el JSON de sesión
+        final response = await _supabase.auth.recoverSession(sessionJson);
 
-      print('🔄 [LOGIN_BIOMETRIC] Respuesta de setSession: ${response.session != null ? 'Sesión establecida' : 'Sin sesión'}');
+        print('🔄 [LOGIN_BIOMETRIC] Respuesta de recoverSession: ${response.session != null ? 'Sesión recuperada' : 'Sin sesión'}');
 
-      if (response.session != null) {
-        print('✅ [LOGIN_BIOMETRIC] Sesión establecida exitosamente');
-        
-        // Guardar el nuevo refresh token si es diferente
-        final newRefreshToken = response.session!.refreshToken;
-        if (newRefreshToken != null && newRefreshToken != refreshToken) {
-          print('🔄 [LOGIN_BIOMETRIC] Guardando nuevo refresh token...');
+        if (response.session != null) {
+          print('✅ [LOGIN_BIOMETRIC] Sesión recuperada exitosamente');
+          
+          // Guardar la nueva sesión
+          print('🔄 [LOGIN_BIOMETRIC] Guardando nueva sesión...');
           await _secureStorage.write(
             key: _refreshTokenKey, 
-            value: newRefreshToken,
+            value: jsonEncode(response.session!.toJson()),
             iOptions: _iosOptions,
             aOptions: _androidOptions,
           );
+          
+          // Obtener el perfil del usuario
+          final userProfile = await _getUserProfile(response.session!.user.id);
+          print('👤 [LOGIN_BIOMETRIC] Perfil de usuario obtenido: ${userProfile.email}');
+          
+          return userProfile;
+        } else {
+          print('❌ [LOGIN_BIOMETRIC] No se pudo establecer sesión válida');
+          throw BiometricAuthException(
+            'SESSION_EXPIRED',
+            'Sesión biométrica expirada'
+          );
         }
-        
-        // Obtener el perfil del usuario
-        final userProfile = await _getUserProfile(response.session!.user.id);
-        print('👤 [LOGIN_BIOMETRIC] Perfil de usuario obtenido: ${userProfile.email}');
-        
-        return userProfile;
-      } else {
-        print('❌ [LOGIN_BIOMETRIC] No se pudo establecer sesión válida');
+      } catch (e) {
+        print('❌ [LOGIN_BIOMETRIC] Error al establecer sesión: $e');
+        // Si la sesión es inválida, limpiar credenciales
+        await _clearBiometricCredentials();
         throw BiometricAuthException(
-          'SESSION_EXPIRED',
-          'Sesión biométrica expirada'
+          'INVALID_SESSION',
+          'Sesión biométrica inválida'
         );
       }
     } on AuthException catch (e) {
