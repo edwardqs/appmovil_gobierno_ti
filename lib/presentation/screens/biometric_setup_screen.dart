@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:local_auth/local_auth.dart';
-import '../providers/auth_provider.dart';
-import '../../data/services/biometric_service.dart';
+import 'package:app_gobiernoti/presentation/providers/auth_provider.dart';
+import 'package:app_gobiernoti/data/services/biometric_service.dart';
+import 'package:app_gobiernoti/core/locator.dart';
 
 class BiometricSetupScreen extends StatefulWidget {
   const BiometricSetupScreen({super.key});
@@ -12,118 +12,61 @@ class BiometricSetupScreen extends StatefulWidget {
 }
 
 class _BiometricSetupScreenState extends State<BiometricSetupScreen> {
-  final BiometricService _biometricService = BiometricService();
+  final BiometricService _biometricService = locator<BiometricService>();
   bool _isLoading = false;
-  List<BiometricType> _availableBiometrics = [];
+  bool _isDeviceCapable = false; // Para saber si el hardware existe
 
   @override
   void initState() {
     super.initState();
-    _checkBiometricAvailability();
+    _checkDeviceCapability();
   }
 
-  Future<void> _checkBiometricAvailability() async {
-    try {
-      final isAvailable = await _biometricService.hasBiometrics();
-      if (isAvailable) {
-        final biometrics = await _biometricService.getAvailableBiometrics();
-        setState(() {
-          _availableBiometrics = biometrics;
-        });
-      }
-    } catch (e) {
-      _showError('Error al verificar biometría disponible');
+  Future<void> _checkDeviceCapability() async {
+    final isCapable = await _biometricService.hasBiometrics();
+    if (mounted) {
+      setState(() {
+        _isDeviceCapable = isCapable;
+      });
     }
   }
 
   Future<void> _enableBiometric() async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    
-    if (!authProvider.isAuthenticated) {
-      _showError('Debes estar autenticado para configurar biometría');
-      return;
-    }
-
     setState(() => _isLoading = true);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-    try {
-      // 1. Verificar que hay biometría disponible
-      if (_availableBiometrics.isEmpty) {
-        _showError('No hay métodos biométricos disponibles en este dispositivo');
-        return;
-      }
+    // Usamos el nuevo método del provider
+    final result = await authProvider.enableBiometrics();
 
-      // 2. Solicitar autenticación biométrica
-      final reason = _getBiometricReason();
-      final isAuthenticated = await _biometricService.authenticate(reason);
-
-      if (isAuthenticated) {
-        // 3. Habilitar en Supabase
-        final success = await authProvider.enableBiometric();
-        
-        if (success) {
-          _showSuccess('¡Autenticación biométrica habilitada exitosamente!');
-          Navigator.of(context).pop(true);
-        } else {
-          _showError('Error al habilitar autenticación biométrica');
-        }
+    if (mounted) {
+      if (result['success'] == true) {
+        _showSuccess('¡Acceso biométrico habilitado exitosamente!');
       } else {
-        _showError('Autenticación biométrica cancelada');
+        _showError(result['message'] ?? 'No se pudo habilitar la biometría');
       }
-    } catch (e) {
-      _showError('Error: ${e.toString()}');
-    } finally {
       setState(() => _isLoading = false);
     }
   }
 
   Future<void> _disableBiometric() async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    
     setState(() => _isLoading = true);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-    try {
-      final success = await authProvider.disableBiometric();
-      
-      if (success) {
-        _showSuccess('Autenticación biométrica deshabilitada');
-        Navigator.of(context).pop(false);
+    // Usamos el nuevo método del provider
+    final result = await authProvider.disableBiometrics();
+
+    if (mounted) {
+      if (result['success'] == true) {
+        _showSuccess('Acceso biométrico deshabilitado.');
       } else {
-        _showError('Error al deshabilitar autenticación biométrica');
+        _showError(result['message'] ?? 'No se pudo deshabilitar la biometría');
       }
-    } catch (e) {
-      _showError('Error: ${e.toString()}');
-    } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  String _getBiometricReason() {
-    if (_availableBiometrics.contains(BiometricType.face)) {
-      return 'Configura el reconocimiento facial para acceso rápido';
-    } else if (_availableBiometrics.contains(BiometricType.fingerprint)) {
-      return 'Configura la huella dactilar para acceso rápido';
-    } else {
-      return 'Configura la autenticación biométrica para acceso rápido';
-    }
-  }
-
-  String _getBiometricTypeText() {
-    List<String> types = [];
-    if (_availableBiometrics.contains(BiometricType.face)) {
-      types.add('Reconocimiento facial');
-    }
-    if (_availableBiometrics.contains(BiometricType.fingerprint)) {
-      types.add('Huella dactilar');
-    }
-    if (_availableBiometrics.contains(BiometricType.iris)) {
-      types.add('Reconocimiento de iris');
-    }
-    
-    return types.isNotEmpty ? types.join(', ') : 'Biometría genérica';
-  }
-
   void _showError(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -134,6 +77,7 @@ class _BiometricSetupScreenState extends State<BiometricSetupScreen> {
   }
 
   void _showSuccess(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -148,38 +92,19 @@ class _BiometricSetupScreenState extends State<BiometricSetupScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Configuración Biométrica'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        //backgroundColor: Theme.of(context).colorScheme.inversePrimary, // Quitado para usar el tema
       ),
       body: Consumer<AuthProvider>(
         builder: (context, authProvider, child) {
+          // El estado 'isBiometricEnabled' ahora viene del provider
+          final isEnabled = authProvider.hasBiometricData;
+
           return Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Información del usuario
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Usuario Actual',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 8),
-                        Text('Nombre: ${authProvider.currentUser?.name ?? 'N/A'}'),
-                        Text('Email: ${authProvider.currentUser?.email ?? 'N/A'}'),
-                        Text('Rol: ${authProvider.currentUser?.role.toString().split('.').last ?? 'N/A'}'),
-                      ],
-                    ),
-                  ),
-                ),
-                
-                const SizedBox(height: 24),
-                
-                // Estado de biometría disponible
+                // Card de Estado del Dispositivo
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
@@ -191,12 +116,12 @@ class _BiometricSetupScreenState extends State<BiometricSetupScreen> {
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         const SizedBox(height: 8),
-                        if (_availableBiometrics.isNotEmpty) ...[
-                          Row(
+                        if (_isDeviceCapable) ...[
+                          const Row(
                             children: [
-                              const Icon(Icons.check_circle, color: Colors.green),
-                              const SizedBox(width: 8),
-                              Expanded(child: Text(_getBiometricTypeText())),
+                              Icon(Icons.check_circle, color: Colors.green),
+                              SizedBox(width: 8),
+                              Expanded(child: Text('Dispositivo compatible')),
                             ],
                           ),
                         ] else ...[
@@ -204,7 +129,11 @@ class _BiometricSetupScreenState extends State<BiometricSetupScreen> {
                             children: [
                               Icon(Icons.error, color: Colors.red),
                               SizedBox(width: 8),
-                              Expanded(child: Text('No hay biometría disponible')),
+                              Expanded(
+                                child: Text(
+                                  'No hay biometría disponible en este dispositivo',
+                                ),
+                              ),
                             ],
                           ),
                         ],
@@ -212,10 +141,10 @@ class _BiometricSetupScreenState extends State<BiometricSetupScreen> {
                     ),
                   ),
                 ),
-                
+
                 const SizedBox(height: 24),
-                
-                // Estado actual de configuración
+
+                // Card de Estado Actual
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
@@ -230,18 +159,14 @@ class _BiometricSetupScreenState extends State<BiometricSetupScreen> {
                         Row(
                           children: [
                             Icon(
-                              authProvider.isBiometricEnabled 
-                                  ? Icons.lock_open 
-                                  : Icons.lock,
-                              color: authProvider.isBiometricEnabled 
-                                  ? Colors.green 
-                                  : Colors.grey,
+                              isEnabled ? Icons.lock_open : Icons.lock,
+                              color: isEnabled ? Colors.green : Colors.grey,
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              authProvider.isBiometricEnabled 
-                                  ? 'Autenticación biométrica habilitada'
-                                  : 'Autenticación biométrica deshabilitada',
+                              isEnabled
+                                  ? 'Acceso biométrico habilitado'
+                                  : 'Acceso biométrico deshabilitado',
                             ),
                           ],
                         ),
@@ -249,51 +174,45 @@ class _BiometricSetupScreenState extends State<BiometricSetupScreen> {
                     ),
                   ),
                 ),
-                
+
                 const SizedBox(height: 32),
-                
+
                 // Botones de acción
-                if (_availableBiometrics.isNotEmpty) ...[
+                if (_isDeviceCapable) ...[
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      onPressed: _isLoading ? null : (
-                        authProvider.isBiometricEnabled 
-                            ? _disableBiometric 
-                            : _enableBiometric
-                      ),
-                      icon: _isLoading 
+                      onPressed: _isLoading
+                          ? null
+                          : (isEnabled ? _disableBiometric : _enableBiometric),
+                      icon: _isLoading
                           ? const SizedBox(
                               width: 20,
                               height: 20,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : Icon(
-                              authProvider.isBiometricEnabled 
-                                  ? Icons.lock 
-                                  : Icons.fingerprint,
-                            ),
+                          : Icon(isEnabled ? Icons.lock : Icons.fingerprint),
                       label: Text(
-                        _isLoading 
+                        _isLoading
                             ? 'Procesando...'
-                            : (authProvider.isBiometricEnabled 
-                                ? 'Deshabilitar Biometría' 
-                                : 'Habilitar Biometría'),
+                            : (isEnabled
+                                  ? 'Deshabilitar Biometría'
+                                  : 'Habilitar Biometría'),
                       ),
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        backgroundColor: authProvider.isBiometricEnabled 
-                            ? Colors.red 
+                        backgroundColor: isEnabled
+                            ? Colors.red
                             : Theme.of(context).primaryColor,
                         foregroundColor: Colors.white,
                       ),
                     ),
                   ),
                 ],
-                
+
                 const SizedBox(height: 16),
-                
-                // Información de seguridad
+
+                // ... (Tu Card de Información de seguridad)
                 Card(
                   color: Colors.blue.shade50,
                   child: Padding(
@@ -303,22 +222,23 @@ class _BiometricSetupScreenState extends State<BiometricSetupScreen> {
                       children: [
                         Row(
                           children: [
-                            const Icon(Icons.info, color: Colors.blue),
+                            Icon(Icons.info, color: Colors.blue.shade700),
                             const SizedBox(width: 8),
                             Text(
                               'Información de Seguridad',
-                              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                color: Colors.blue.shade800,
-                              ),
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(
+                                    color: Colors.blue.shade800,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          '• La biometría se asocia únicamente a tu cuenta\n'
-                          '• Solo tú podrás acceder con tu biometría\n'
-                          '• Puedes deshabilitar esta función en cualquier momento\n'
-                          '• Los datos biométricos se almacenan de forma segura',
+                          '• Al habilitar, se guardará un token seguro en el llavero de tu dispositivo.\n'
+                          '• Este token se desbloquea con tu huella/rostro para iniciar sesión.\n'
+                          '• Tus datos biométricos nunca salen de tu dispositivo.',
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.blue.shade700,

@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import 'locator.dart'; // <-- IMPORTACIÓN AÑADIDA
+import 'locator.dart';
 import '../presentation/providers/auth_provider.dart';
 import '../presentation/screens/auth/login_screen.dart';
+import '../presentation/screens/auth/register_screen.dart'; // <-- AÑADIR REGISTRO
 
 import '../presentation/screens/dashboard/dashboard_screen.dart';
 import '../presentation/screens/connection_test_screen.dart';
@@ -13,17 +14,17 @@ import '../presentation/screens/biometric_setup_screen.dart';
 
 // Creamos una instancia del router.
 final GoRouter router = GoRouter(
+  // Escucha los cambios en AuthProvider
   refreshListenable: locator<AuthProvider>(),
-  routes: [
-    GoRoute(
-      path: '/',
-      builder: (context, state) => const DashboardScreen(),
-    ),
-    GoRoute(
-      path: '/login',
-      builder: (context, state) => const LoginScreen(),
-    ),
 
+  // Definimos las rutas de la app
+  routes: [
+    GoRoute(path: '/', builder: (context, state) => const DashboardScreen()),
+    GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
+    GoRoute(
+      path: '/register', // <-- AÑADIR RUTA DE REGISTRO
+      builder: (context, state) => const RegisterScreen(),
+    ),
     GoRoute(
       path: '/connection-test',
       builder: (context, state) => const ConnectionTestScreen(),
@@ -37,20 +38,41 @@ final GoRouter router = GoRouter(
       builder: (context, state) => const BiometricSetupScreen(),
     ),
   ],
+
+  // Lógica de redirección
   redirect: (BuildContext context, GoRouterState state) {
     final authProvider = context.read<AuthProvider>();
-    final bool isAuthenticated = authProvider.isAuthenticated;
-    final String location = state.matchedLocation;
+    final authStatus = authProvider.status;
+    final location = state.matchedLocation;
 
-    // Permitir acceso a login sin autenticación
-    final publicRoutes = ['/login'];
-    
-    if (!isAuthenticated && !publicRoutes.contains(location)) {
-      return '/login';
+    final publicRoutes = ['/login', '/register'];
+    final isPublicRoute = publicRoutes.contains(location);
+
+    // Si está autenticado
+    if (authStatus == AuthStatus.authenticated) {
+      // Si está en una ruta pública (login/register), llévalo al home
+      if (isPublicRoute) {
+        return '/';
+      }
+      // Si no, déjalo donde está
+      return null;
     }
 
-    if (isAuthenticated && publicRoutes.contains(location)) {
-      return '/';
+    // Si NO está autenticado
+    if (authStatus == AuthStatus.unauthenticated ||
+        authStatus == AuthStatus.error) {
+      // Si intenta entrar a una ruta protegida, llévalo al login
+      if (!isPublicRoute) {
+        return '/login';
+      }
+      // Si ya está en login/register, déjalo ahí
+      return null;
+    }
+
+    // Si está cargando o inicializando, no hagas nada
+    if (authStatus == AuthStatus.loading ||
+        authStatus == AuthStatus.uninitialized) {
+      return null;
     }
 
     return null;

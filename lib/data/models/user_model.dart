@@ -4,8 +4,9 @@ enum UserRole {
   auditorJunior,
   auditorSenior,
   gerenteAuditoria,
-  unknown, // Rol por defecto  
+  unknown, // Rol por defecto
 }
+
 class UserModel {
   final String id;
   final String name;
@@ -31,8 +32,37 @@ class UserModel {
     this.address,
   });
 
+  // ▼▼▼ MÉTODO AÑADIDO (ESTA ES LA CORRECCIÓN PRINCIPAL) ▼▼▼
+  UserModel copyWith({
+    String? id,
+    String? name,
+    String? email,
+    UserRole? role,
+    bool? biometricEnabled,
+    String? biometricToken,
+    String? deviceId,
+    String? dni,
+    String? phone,
+    String? address,
+  }) {
+    return UserModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      email: email ?? this.email,
+      role: role ?? this.role,
+      biometricEnabled: biometricEnabled ?? this.biometricEnabled,
+      biometricToken: biometricToken ?? this.biometricToken,
+      deviceId: deviceId ?? this.deviceId,
+      dni: dni ?? this.dni,
+      phone: phone ?? this.phone,
+      address: address ?? this.address,
+    );
+  }
+  // ▲▲▲ FIN DEL MÉTODO AÑADIDO ▲▲▲
+
   // Helper para convertir un string a un UserRole
-  static UserRole roleFromString(String roleString) {
+  static UserRole roleFromString(String? roleString) {
+    // Acepta nullable
     switch (roleString) {
       case 'Auditor Junior':
       case 'auditor_junior':
@@ -45,7 +75,7 @@ class UserModel {
       case 'Gerente Auditor':
       case 'gerente_auditoria':
       case 'gerenteAuditoria': // Formato camelCase de la base de datos
-      case 'gerente': // ✅ AGREGADO: Formato usado en la base de datos
+      case 'gerente':
         return UserRole.gerenteAuditoria;
       default:
         return UserRole.unknown;

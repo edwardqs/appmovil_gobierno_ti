@@ -1,414 +1,297 @@
-// lib/data/services/auth_service.dart
-
-import 'dart:convert';
-import 'package:crypto/crypto.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart'; // Importar
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../models/user_model.dart';
-import 'biometric_service.dart';
+import 'package:app_gobiernoti/data/models/user_model.dart';
+import 'package:app_gobiernoti/data/services/biometric_service.dart';
+import 'package:app_gobiernoti/core/locator.dart';
 
 class AuthService {
-  final BiometricService _biometricService = BiometricService();
   final SupabaseClient _supabase = Supabase.instance.client;
+  final BiometricService _biometricService = locator<BiometricService>();
 
-  Future<UserModel?> login(String email, String password) async {
+  // Usar flutter_secure_storage para guardar credenciales de forma segura
+  final _secureStorage = const FlutterSecureStorage();
+
+  // Opciones para asegurar que los datos estén encriptados
+  // y solo sean accesibles después del primer desbloqueo del dispositivo.
+  IOSOptions get _iosOptions => const IOSOptions(
+    accessibility: KeychainAccessibility.first_unlock_this_device,
+  );
+  AndroidOptions get _androidOptions =>
+      const AndroidOptions(encryptedSharedPreferences: true);
+
+  // Clave para guardar el token de refresco
+  static const String _refreshTokenKey = 'supabase_refresh_token';
+  // Clave para guardar el indicador en SharedPreferences (no seguro)
+  static const String _biometricEnabledKey = 'biometric_enabled';
+
+  /// Inicia sesión con email y contraseña.
+  Future<UserModel> loginWithEmail(String email, String password) async {
     try {
-      print('Attempting login with email: $email');
       final response = await _supabase.auth.signInWithPassword(
         email: email,
         password: password,
       );
+      final user = response.user;
+      if (user != null) {
+        // Almacena la sesión actual para uso futuro (como restaurar sesión)
+        // Esto es opcional pero recomendado si quieres persistencia entre reinicios de app
+        // (Supabase puede manejar esto automáticamente si usaste `Supabase.initialize`)
 
-      print('Auth response: ${response.user?.id}');
-      if (response.user != null) {
-        // Obtener perfil completo del usuario
-        final profileResponse = await _supabase.rpc(
-          'get_user_profile',
-          params: {'p_user_id': response.user!.id},
-        );
-        
-        if (profileResponse != null && profileResponse['success'] == true) {
-          final userData = profileResponse['user'];
-          return UserModel(
-            id: userData['id'],
-            name: userData['name'],
-            email: userData['email'],
-            role: UserModel.roleFromString(userData['role']),
-            biometricEnabled: userData['biometric_enabled'] ?? false,
-            dni: userData['dni'],
-            phone: userData['phone'],
-            address: userData['address'],
-          );
-        } else {
-          print('Error getting user profile: ${profileResponse?['message']}');
-        }
+        // Lo más importante: obtener el perfil del usuario desde tu RPC
+        return await _getUserProfile(user.id);
+      } else {
+        throw Exception('Usuario no encontrado');
       }
-
-      return null;
+    } on AuthException catch (e) {
+      throw Exception('Error de autenticación: ${e.message}');
     } catch (e) {
-      print('Error during login: $e');
-      return null;
+      throw Exception('Error desconocido: ${e.toString()}');
     }
   }
 
-  Future<void> logout() async {
+  /// Cierra la sesión del usuario.
+  Future<void> signOut() async {
+    await _supabase.auth.signOut();
+    // Opcionalmente, también podrías limpiar los datos biométricos aquí
+    // si quieres que el logout también deshabilite la huella.
+    // await disableBiometricForCurrentUser();
+  }
+
+  /// Obtiene el perfil de usuario desde la RPC de Supabase.
+  Future<UserModel> _getUserProfile(String userId) async {
     try {
-      // Cerrar sesión en Supabase
-      await _supabase.auth.signOut();
-      // Limpiar datos biométricos almacenados
-      await _clearBiometricData();
+      final response = await _supabase.rpc(
+        'get_user_profile',
+        params: {'p_user_id': userId},
+      );
+
+      if (response != null && response['success'] == true) {
+        final userData = response['user'];
+        final prefs = await SharedPreferences.getInstance();
+        final biometricEnabled = prefs.getBool(_biometricEnabledKey) ?? false;
+
+        return UserModel(
+          id: userData['id'],
+          name: userData['name'],
+          email: userData['email'],
+          role: UserModel.roleFromString(userData['role']),
+          biometricEnabled: biometricEnabled, // Usar el indicador de prefs
+          dni: userData['dni'],
+          phone: userData['phone'],
+          address: userData['address'],
+        );
+      } else {
+        throw Exception(
+          response?['message'] ?? 'Error al obtener el perfil del usuario',
+        );
+      }
     } catch (e) {
-      print('Error during logout: $e');
-      // Aún así limpiar datos locales
-      await _clearBiometricData();
+      throw Exception('Error en RPC get_user_profile: ${e.toString()}');
     }
   }
 
-  // Registrar nuevo usuario con Supabase
-  Future<Map<String, dynamic>> registerUser({
-    required String name,
+  /// Registra un nuevo usuario.
+  Future<UserModel> registerUser({
     required String email,
     required String password,
-    required String dni,
-    required String phone,
-    required String address,
-    bool enableBiometric = false,
-    String? deviceId,
-    String? biometricHash,
+    required String name,
+    required String role,
+    String? dni,
+    String? phone,
+    String? address,
   }) async {
     try {
-      print('📝 AuthService: Llamando register_user con parámetros:');
-      print('📝 AuthService: enableBiometric: $enableBiometric');
-      print('📝 AuthService: deviceId: $deviceId');
-      print('📝 AuthService: biometricHash: ${biometricHash?.substring(0, 10)}...');
-      
-      final response = await _supabase.rpc('register_user', params: {
-        'p_name': name,
-        'p_email': email,
-        'p_password': password,
-        'p_dni': dni,
-        'p_phone': phone,
-        'p_address': address,
-        'p_device_id': deviceId,
-        'p_biometric_hash': biometricHash,
-      });
+      // 1. Crear el usuario en Supabase Auth
+      final response = await _supabase.auth.signUp(
+        email: email,
+        password: password,
+      );
 
-      print('📝 AuthService: Respuesta completa de Supabase: $response');
+      final user = response.user;
+      if (user == null) {
+        throw Exception('No se pudo crear el usuario en Auth.');
+      }
 
-      if (response != null && response['success'] == true) {
-        print('📝 AuthService: Registro exitoso, procesando datos biométricos...');
-        print('📝 AuthService: response biometric_token: ${response['biometric_token']}');
-        
-        final user = UserModel(
-          id: response['user_id'],
-          name: response['name'],
-          email: response['email'],
-          role: null, // Sin rol asignado inicialmente
-          biometricEnabled: enableBiometric,
-          dni: response['dni'],
-          phone: response['phone'],
-          address: response['address'],
+      // 2. Llamar al RPC para crear el perfil en la tabla 'users'
+      final profileResponse = await _supabase.rpc(
+        'register_user', // Tu RPC existente
+        params: {
+          'p_user_id': user.id,
+          'p_email': email,
+          'p_name': name,
+          'p_role': role,
+          'p_dni': dni,
+          'p_phone': phone,
+          'p_address': address,
+          // Eliminamos todos los parámetros de biometría
+        },
+      );
+
+      if (profileResponse != null && profileResponse['success'] == true) {
+        // 3. Devolver el modelo de usuario completo
+        return UserModel(
+          id: user.id,
+          name: name,
+          email: email,
+          role: UserModel.roleFromString(role),
+          biometricEnabled: false, // Nuevo usuario, biometría deshabilitada
+          dni: dni,
+          phone: phone,
+          address: address,
         );
-
-        Map<String, dynamic> result = {
-          'success': true,
-          'user': user,
-          'message': response['message'],
-        };
-
-        // Si se habilitó biometría, configurar token
-        if (enableBiometric && response['biometric_token'] != null) {
-          print('📝 AuthService: Guardando datos biométricos localmente...');
-          result['biometric_data'] = {
-            'token': response['biometric_token']['token'],
-            'device_id': deviceId,
-            'expires_at': response['biometric_token']['expires_at'],
-          };
-          
-          // Guardar datos biométricos localmente
-          if (deviceId != null) {
-            print('📝 AuthService: Llamando _saveBiometricData con userId: ${user.id}, deviceId: $deviceId');
-            await _saveBiometricData(
-              user.id,
-              response['biometric_token']['token'],
-              deviceId,
-              biometricHash!,
-            );
-            print('📝 AuthService: Datos biométricos guardados exitosamente');
-            
-            // Verificar que se guardaron correctamente
-            final savedData = await hasBiometricData();
-            print('📝 AuthService: Verificación post-guardado - hasBiometricData: $savedData');
-          } else {
-            print('📝 AuthService: ERROR - deviceId es null, no se pueden guardar datos biométricos');
-          }
-        } else {
-          print('📝 AuthService: No se guardaron datos biométricos - enableBiometric: $enableBiometric, biometric_token: ${response['biometric_token']}');
-        }
-
-        return result;
+      } else {
+        // Si falla el RPC, eliminar el usuario de Auth para consistencia
+        // NOTA: Necesitas habilitar los permisos de Admin para esto
+        // await _supabase.auth.admin.deleteUser(user.id);
+        print(
+          'Error al registrar perfil, pero el usuario de Auth ya fue creado.',
+        );
+        throw Exception(
+          profileResponse?['message'] ??
+              'Error al registrar el perfil de usuario.',
+        );
       }
-
-      return {
-        'success': false,
-        'message': response?['message'] ?? 'Error al registrar usuario',
-      };
+    } on AuthException catch (e) {
+      throw Exception('Error de registro: ${e.message}');
     } catch (e) {
-      return {
-        'success': false,
-        'message': 'Error inesperado: $e',
-      };
+      throw Exception('Error desconocido: ${e.toString()}');
     }
   }
 
-  // Login con biometría
-  Future<UserModel?> loginWithBiometrics() async {
-    try {
-      final biometricData = await _getBiometricData();
-      
-      if (biometricData == null) {
-        return null;
-      }
+  // =======================================================================
+  // NUEVO FLUJO BIOMÉTRICO SEGURO
+  // =======================================================================
 
-      return await _biometricService.loginWithBiometrics(
-        biometricData['token']!,
-        biometricData['device_id']!,
-        biometricData['biometric_hash']!,
-      );
-    } catch (e) {
-      print('Error during biometric login: $e');
-      return null;
-    }
-  }
-
-  // Configurar biometría para usuario existente
-  Future<Map<String, dynamic>?> setupBiometricAuthentication(UserModel user) async {
-    final result = await _biometricService.setupBiometricForUser(user);
-    
-    if (result != null && result['success'] == true) {
-      // Guardar datos biométricos localmente
-      await _saveBiometricData(
-        user.id,
-        result['token'],
-        result['device_id'],
-        result['biometric_hash'],
-      );
-    }
-    
-    return result;
-  }
-
-  // Habilitar biometría para usuario autenticado (desde la app)
+  /// Habilita el inicio de sesión biométrico para el usuario actual.
+  /// Guarda el token de refresco de la sesión actual en almacenamiento seguro.
   Future<Map<String, dynamic>> enableBiometricForCurrentUser() async {
-    print('🔧 enableBiometricForCurrentUser: Iniciando proceso...');
     try {
-      // Verificar si la biometría está disponible en el dispositivo
-      print('🔧 enableBiometricForCurrentUser: Verificando disponibilidad de biometría...');
+      // 1. Verificar si la biometría está disponible en el dispositivo
       final isAvailable = await _biometricService.hasBiometrics();
-      print('🔧 enableBiometricForCurrentUser: Biometría disponible: $isAvailable');
-      
       if (!isAvailable) {
-        print('🔧 enableBiometricForCurrentUser: Biometría no disponible, retornando error');
-        return {
-          'success': false,
-          'message': 'Biometría no disponible en este dispositivo',
-        };
+        return {'success': false, 'message': 'Biometría no disponible'};
       }
 
-      print('🔧 enableBiometricForCurrentUser: Verificando usuario actual de Supabase...');
-      final currentSupabaseUser = _supabase.auth.currentUser;
-      print('🔧 enableBiometricForCurrentUser: Usuario actual: ${currentSupabaseUser?.id}');
-      
-      if (currentSupabaseUser == null) {
-        print('🔧 enableBiometricForCurrentUser: No hay usuario autenticado en Supabase');
-        return {
-          'success': false,
-          'message': 'No hay usuario autenticado',
-        };
-      }
-
-      // *** PASO CRÍTICO: Solicitar autenticación biométrica para registrar ***
-      print('🔧 enableBiometricForCurrentUser: Solicitando autenticación biométrica para registro...');
+      // 2. Pedir la huella/rostro para confirmar la acción
       final isAuthenticated = await _biometricService.authenticate(
-        'Registra tu huella dactilar o rostro para habilitar el acceso rápido'
+        'Confirma tu identidad para habilitar el acceso rápido',
       );
-      
       if (!isAuthenticated) {
-        print('🔧 enableBiometricForCurrentUser: Autenticación biométrica cancelada por el usuario');
+        return {'success': false, 'message': 'Autenticación cancelada'};
+      }
+
+      // 3. Obtener el token de refresco de la sesión activa de Supabase
+      final currentSession = _supabase.auth.currentSession;
+      final refreshToken = currentSession?.refreshToken;
+
+      if (refreshToken == null) {
         return {
           'success': false,
-          'message': 'Registro biométrico cancelado. Necesitas registrar tu huella o rostro para continuar.',
-        };
-      }
-      
-      print('🔧 enableBiometricForCurrentUser: Autenticación biométrica exitosa, continuando...');
-      print('🔧 enableBiometricForCurrentUser: Obteniendo deviceId...');
-      final deviceId = await _biometricService.getDeviceId();
-      print('🔧 enableBiometricForCurrentUser: deviceId: $deviceId');
-      
-      print('🔧 enableBiometricForCurrentUser: Generando hash biométrico...');
-      final biometricHash = _generateBiometricHash(currentSupabaseUser.id, deviceId);
-      print('🔧 enableBiometricForCurrentUser: Hash generado: $biometricHash');
-
-      // Llamar a la función de Supabase para habilitar biometría
-      print('🔧 enableBiometricForCurrentUser: Llamando a setup_biometric_for_user...');
-      final response = await _supabase.rpc('setup_biometric_for_user', params: {
-        'p_device_id': deviceId,
-        'p_biometric_hash': biometricHash,
-      });
-      print('🔧 enableBiometricForCurrentUser: Respuesta de Supabase: $response');
-
-      if (response != null && response['success'] == true) {
-        print('🔧 enableBiometricForCurrentUser: Respuesta exitosa, guardando datos localmente...');
-        // Guardar datos biométricos localmente
-        await _saveBiometricData(
-          currentSupabaseUser.id,
-          response['token'],
-          deviceId,
-          biometricHash,
-        );
-        print('🔧 enableBiometricForCurrentUser: Datos guardados exitosamente');
-
-        return {
-          'success': true,
-          'message': 'Biometría registrada y habilitada exitosamente. Ahora puedes usar tu huella o rostro para acceder.',
-          'token': response['token'],
-          'expires_at': response['expires_at'],
+          'message': 'Error: No se encontró sesión activa',
         };
       }
 
-      print('🔧 enableBiometricForCurrentUser: Respuesta no exitosa de Supabase');
-      return {
-        'success': false,
-        'message': response?['message'] ?? 'Error al habilitar biometría',
-      };
+      // 4. Guardar el token de refresco en Almacenamiento Seguro
+      await _secureStorage.write(
+        key: _refreshTokenKey,
+        value: refreshToken,
+        iOptions: _iosOptions,
+        aOptions: _androidOptions,
+      );
+
+      // 5. Guardar un indicador simple en SharedPreferences (no seguro)
+      //    para mostrar/ocultar el botón de huella en la UI.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_biometricEnabledKey, true);
+
+      return {'success': true, 'message': 'Acceso biométrico habilitado'};
     } catch (e) {
-      print('🔧 enableBiometricForCurrentUser: Error capturado: $e');
-      print('🔧 enableBiometricForCurrentUser: Tipo de error: ${e.runtimeType}');
-      return {
-        'success': false,
-        'message': 'Error inesperado: $e',
-      };
+      return {'success': false, 'message': 'Error: ${e.toString()}'};
     }
   }
 
-  // Deshabilitar biometría para usuario autenticado
+  /// Deshabilita el inicio de sesión biométrico.
+  /// Elimina el token de refresco del almacenamiento seguro.
   Future<Map<String, dynamic>> disableBiometricForCurrentUser() async {
     try {
-      // Llamar a la función de Supabase para deshabilitar biometría
-      final response = await _supabase.rpc('disable_biometric_for_user');
+      // 1. Borrar la clave del almacenamiento seguro
+      await _secureStorage.delete(
+        key: _refreshTokenKey,
+        iOptions: _iosOptions,
+        aOptions: _androidOptions,
+      );
 
-      if (response != null && response['success'] == true) {
-        // Limpiar datos biométricos locales
-        await _clearBiometricData();
+      // 2. Borrar el indicador de SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_biometricEnabledKey, false);
 
-        return {
-          'success': true,
-          'message': response['message'],
-        };
+      return {'success': true, 'message': 'Acceso biométrico deshabilitado'};
+    } catch (e) {
+      return {'success': false, 'message': 'Error: ${e.toString()}'};
+    }
+  }
+
+  /// Intenta iniciar sesión usando biometría.
+  Future<UserModel?> loginWithBiometrics() async {
+    try {
+      // 1. Pedir la huella/rostro al usuario
+      final isAuthenticated = await _biometricService.authenticate(
+        'Inicia sesión con tu huella',
+      );
+
+      if (!isAuthenticated) {
+        return null; // El usuario canceló la autenticación
       }
 
-      return {
-        'success': false,
-        'message': response?['message'] ?? 'Error al deshabilitar biometría',
-      };
+      // 2. Si tiene éxito, leer el token de refresco del almacenamiento seguro
+      final refreshToken = await _secureStorage.read(
+        key: _refreshTokenKey,
+        iOptions: _iosOptions,
+        aOptions: _androidOptions,
+      );
+
+      if (refreshToken == null) {
+        // Esto puede pasar si el usuario elimina la huella de su dispositivo
+        // o si los datos seguros se corrompen.
+        await disableBiometricForCurrentUser(); // Limpiar el estado
+        throw Exception(
+          'Credenciales biométricas no encontradas. Inicia sesión manualmente y vuelve a habilitarlas.',
+        );
+      }
+
+      // 3. Usar el token de refresco para restaurar la sesión de Supabase
+      final response = await _supabase.auth.refreshSession(refreshToken);
+
+      if (response.user != null) {
+        // 4. Si la sesión se restaura, obtener el perfil del usuario
+        return await _getUserProfile(response.user!.id);
+      } else {
+        throw Exception(
+          'No se pudo restaurar la sesión con el token guardado.',
+        );
+      }
     } catch (e) {
-      return {
-        'success': false,
-        'message': 'Error inesperado: $e',
-      };
+      debugPrint('Error en login biométrico: $e');
+      rethrow; // Lanzar la excepción para que el AuthProvider la maneje
     }
   }
 
-
-
-  // Verificar si hay datos biométricos guardados
-  Future<bool> hasBiometricData() async {
-    print('🔐 AuthService: Verificando datos biométricos...');
+  /// Verifica si la biometría está habilitada (solo revisa el indicador).
+  /// Esto se usa para que AuthProvider sepa si mostrar el botón de huella.
+  Future<bool> checkBiometricStatus() async {
     final prefs = await SharedPreferences.getInstance();
-    
-    final hasToken = prefs.containsKey('biometric_token');
-    final hasDeviceId = prefs.containsKey('biometric_device_id');
-    final hasUserId = prefs.containsKey('biometric_user_id');
-    final hasHash = prefs.containsKey('biometric_hash');
-    
-    print('🔐 AuthService: biometric_token: $hasToken');
-    print('🔐 AuthService: biometric_device_id: $hasDeviceId');
-    print('🔐 AuthService: biometric_user_id: $hasUserId');
-    print('🔐 AuthService: biometric_hash: $hasHash');
-    
-    final result = hasToken && hasDeviceId && hasUserId && hasHash;
-    print('🔐 AuthService: hasBiometricData resultado: $result');
-    
-    return result;
+    return prefs.getBool(_biometricEnabledKey) ?? false;
   }
 
-  // Verificar disponibilidad de biometría
-  Future<bool> isBiometricAvailable() async {
-    return await _biometricService.hasBiometrics();
-  }
-
-  // Métodos privados para manejo de datos biométricos
-  Future<void> _saveBiometricData(String userId, String token, String deviceId, String biometricHash) async {
-    print('💾 _saveBiometricData: Iniciando guardado...');
-    print('💾 _saveBiometricData: userId: $userId');
-    print('💾 _saveBiometricData: token: $token');
-    print('💾 _saveBiometricData: deviceId: $deviceId');
-    
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('biometric_user_id', userId);
-    await prefs.setString('biometric_token', token);
-    await prefs.setString('biometric_device_id', deviceId);
-    
-    await prefs.setString('biometric_hash', biometricHash);
-    
-    print('💾 _saveBiometricData: biometricHash generado: $biometricHash');
-    print('💾 _saveBiometricData: Datos guardados en SharedPreferences');
-    
-    // Verificar que se guardaron
-    final savedUserId = prefs.getString('biometric_user_id');
-    final savedToken = prefs.getString('biometric_token');
-    final savedDeviceId = prefs.getString('biometric_device_id');
-    final savedHash = prefs.getString('biometric_hash');
-    
-    print('💾 _saveBiometricData: Verificación - userId guardado: $savedUserId');
-    print('💾 _saveBiometricData: Verificación - token guardado: $savedToken');
-    print('💾 _saveBiometricData: Verificación - deviceId guardado: $savedDeviceId');
-    print('💾 _saveBiometricData: Verificación - hash guardado: $savedHash');
-  }
-
-  Future<Map<String, String>?> _getBiometricData() async {
-    final prefs = await SharedPreferences.getInstance();
-    
-    final userId = prefs.getString('biometric_user_id');
-    final token = prefs.getString('biometric_token');
-    final deviceId = prefs.getString('biometric_device_id');
-    final biometricHash = prefs.getString('biometric_hash');
-    
-    if (userId != null && token != null && deviceId != null && biometricHash != null) {
-      return {
-        'user_id': userId,
-        'token': token,
-        'device_id': deviceId,
-        'biometric_hash': biometricHash,
-      };
-    }
-    
-    return null;
-  }
-
-  Future<void> _clearBiometricData() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('biometric_user_id');
-    await prefs.remove('biometric_token');
-    await prefs.remove('biometric_device_id');
-    await prefs.remove('biometric_hash');
-  }
-
-  String _generateBiometricHash(String userId, String deviceId) {
-    final String data = '$userId-$deviceId-${DateTime.now().millisecondsSinceEpoch}';
-    final bytes = utf8.encode(data);
-    final digest = sha256.convert(bytes);
-    return digest.toString();
-  }
+  // --- MÉTODOS ANTIGUOS ELIMINADOS ---
+  // Se eliminaron:
+  // - _generateDeviceId
+  // - _generateBiometricHash
+  // - saveBiometricData
+  // - _getBiometricData
+  // - clearBiometricData
+  // - (Tu método enableBiometricForCurrentUser original)
+  // - (Tu método registerUserWithBiometrics original)
 }

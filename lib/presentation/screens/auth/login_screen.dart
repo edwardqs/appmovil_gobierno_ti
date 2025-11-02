@@ -1,7 +1,6 @@
-import 'package:flutter/foundation.dart';
+// Eliminamos 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:app_gobiernoti/data/services/auth_service.dart';
 import 'package:app_gobiernoti/presentation/screens/auth/register_screen.dart';
 
 import '../../../core/theme/app_colors.dart';
@@ -19,76 +18,59 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  final AuthService _authService = AuthService();
 
-
-  Future<void> _loginWithBiometrics(AuthProvider authProvider) async {
-    print('🔐 Iniciando login biométrico...');
-    
-    final hasBiometricData = authProvider.hasBiometricDataValue;
-    print('🔐 ¿Tiene datos biométricos? $hasBiometricData');
-    
-    if (!hasBiometricData) {
-      print('🔐 No hay datos biométricos configurados');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No tienes configurada la autenticación biométrica'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-      return;
-    }
-
-    print('🔐 Intentando autenticación biométrica...');
-    try {
-      final user = await _authService.loginWithBiometrics();
-      print('🔐 Resultado de autenticación: ${user != null ? "Exitoso" : "Falló"}');
-
-      if (user != null && mounted) {
-        // Actualizar el provider con el usuario autenticado
-        authProvider.setCurrentUser(user);
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Inicio de sesión biométrico exitoso'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error en la autenticación biométrica'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print("Error durante la autenticación biométrica: $e");
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error inesperado: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
+  @override
+  void initState() {
+    super.initState();
+    // Limpiar errores al entrar a la pantalla
+    // y comprobar el estado biométrico
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      authProvider.clearError();
+      authProvider.checkBiometricStatus(); // Revisa si el botón debe mostrarse
+    });
   }
 
-  Future<void> _login() async {
+  Future<void> _handleLogin(AuthProvider authProvider) async {
     FocusScope.of(context).unfocus();
 
     if (!_formKey.currentState!.validate()) return;
 
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    // Llama al provider
     await authProvider.login(
-      _emailController.text,
-      _passwordController.text,
+      _emailController.text.trim(),
+      _passwordController.text.trim(),
     );
+
+    // Si hay un error después del login, muéstralo
+    if (authProvider.status == AuthStatus.error && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(authProvider.errorMessage ?? 'Error desconocido'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleBiometricLogin(AuthProvider authProvider) async {
+    await authProvider.loginWithBiometrics();
+
+    if (authProvider.status == AuthStatus.error && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(authProvider.errorMessage ?? 'Error de biometría'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
@@ -133,8 +115,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: TextFormField(
                     controller: _emailController,
                     decoration: const InputDecoration(
-                        labelText: 'Email',
-                        prefixIcon: Icon(Icons.email_outlined)),
+                      labelText: 'Email',
+                      prefixIcon: Icon(Icons.email_outlined),
+                    ),
                     keyboardType: TextInputType.emailAddress,
                     validator: (value) => (value?.isEmpty ?? true)
                         ? 'Por favor ingrese un email'
@@ -147,8 +130,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: TextFormField(
                     controller: _passwordController,
                     decoration: const InputDecoration(
-                        labelText: 'Contraseña',
-                        prefixIcon: Icon(Icons.lock_outline)),
+                      labelText: 'Contraseña',
+                      prefixIcon: Icon(Icons.lock_outline),
+                    ),
                     obscureText: true,
                     validator: (value) => (value?.isEmpty ?? true)
                         ? 'Por favor ingrese una contraseña'
@@ -157,16 +141,19 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 Consumer<AuthProvider>(
                   builder: (context, auth, child) {
-                    if (auth.errorMessage != null && !auth.isLoading) {
+                    // Lógica de error actualizada
+                    if (auth.status == AuthStatus.error &&
+                        auth.errorMessage != null) {
                       return FadeInAnimation(
                         delay: 1.4,
                         child: Padding(
-                          padding:
-                          const EdgeInsets.only(top: 20.0, bottom: 0),
+                          padding: const EdgeInsets.only(top: 20.0, bottom: 0),
                           child: Text(
                             auth.errorMessage!,
                             style: const TextStyle(
-                                color: Colors.red, fontSize: 14),
+                              color: Colors.red,
+                              fontSize: 14,
+                            ),
                             textAlign: TextAlign.center,
                           ),
                         ),
@@ -182,34 +169,43 @@ class _LoginScreenState extends State<LoginScreen> {
                     children: [
                       Expanded(
                         child: Consumer<AuthProvider>(
-                            builder: (context, auth, child) {
-                              return ElevatedButton(
-                                onPressed: auth.isLoading ? null : _login,
-                                child: auth.isLoading
-                                    ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                        color: Colors.white, strokeWidth: 3))
-                                    : const Text('Iniciar Sesión'),
-                              );
-                            }),
+                          builder: (context, auth, child) {
+                            final isLoading = auth.status == AuthStatus.loading;
+                            return ElevatedButton(
+                              // Lógica de botón actualizada
+                              onPressed: isLoading
+                                  ? null
+                                  : () => _handleLogin(auth),
+                              child: isLoading
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 3,
+                                      ),
+                                    )
+                                  : const Text('Iniciar Sesión'),
+                            );
+                          },
+                        ),
                       ),
                       const SizedBox(width: 16),
                       Consumer<AuthProvider>(
                         builder: (context, authProvider, child) {
+                          // Lógica de botón biométrico actualizada
                           return IconButton(
-                            onPressed: authProvider.hasBiometricDataValue
-                                ? () => _loginWithBiometrics(authProvider)
+                            onPressed: authProvider.hasBiometricData
+                                ? () => _handleBiometricLogin(authProvider)
                                 : null,
                             icon: Icon(
                               Icons.fingerprint,
                               size: 30,
-                              color: authProvider.hasBiometricDataValue
+                              color: authProvider.hasBiometricData
                                   ? AppColors.primary
                                   : Colors.grey,
                             ),
-                            tooltip: authProvider.hasBiometricDataValue
+                            tooltip: authProvider.hasBiometricData
                                 ? 'Iniciar con biometría'
                                 : 'Biometría no configurada',
                           );
@@ -223,9 +219,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   delay: 1.7,
                   child: TextButton(
                     onPressed: () {
-                      Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => const RegisterScreen(),
-                      ));
+                      // Usar la navegación a RegisterScreen (o GoRouter)
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const RegisterScreen(),
+                        ),
+                      );
                     },
                     child: const Text('¿No tienes cuenta? Regístrate aquí'),
                   ),
