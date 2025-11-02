@@ -6,6 +6,39 @@ import 'package:app_gobiernoti/data/models/user_model.dart';
 import 'package:app_gobiernoti/data/services/biometric_service.dart';
 import 'package:app_gobiernoti/core/locator.dart';
 
+/// Excepción personalizada para errores de autenticación
+class AuthServiceException implements Exception {
+  final String code;
+  final String message;
+  
+  AuthServiceException(this.code, this.message);
+  
+  @override
+  String toString() => message;
+}
+
+/// Excepción personalizada para errores de autenticación biométrica
+class BiometricAuthException implements Exception {
+  final String code;
+  final String message;
+  
+  BiometricAuthException(this.code, this.message);
+  
+  @override
+  String toString() => message;
+}
+
+/// Excepción personalizada para errores de perfil de usuario
+class UserProfileException implements Exception {
+  final String code;
+  final String message;
+  
+  UserProfileException(this.code, this.message);
+  
+  @override
+  String toString() => message;
+}
+
 class AuthService {
   final SupabaseClient _supabase = Supabase.instance.client;
   final BiometricService _biometricService = locator<BiometricService>();
@@ -221,37 +254,52 @@ class AuthService {
       );
 
       if (refreshToken == null) {
+        // Solo deshabilitar si realmente no hay credenciales guardadas
         await disableBiometricForCurrentUser();
-        throw Exception(
+        throw BiometricAuthException(
+          'CREDENTIALS_NOT_FOUND',
           'Credenciales biométricas no encontradas. Inicia sesión manualmente y vuelve a habilitarlas.',
         );
       }
 
-      // ✅ CORRECCIÓN: refreshSession ya establece la sesión automáticamente
+      // refreshSession ya establece la sesión automáticamente
       final response = await _supabase.auth.refreshSession(refreshToken);
 
       if (response.session != null && response.user != null) {
-        // La sesión ya está establecida automáticamente por refreshSession
+        // Guardar el NUEVO refresh token para el próximo inicio de sesión
+        final newRefreshToken = response.session!.refreshToken;
+        if (newRefreshToken != null) {
+          await _secureStorage.write(
+            key: _refreshTokenKey,
+            value: newRefreshToken,
+            iOptions: _iosOptions,
+            aOptions: _androidOptions,
+          );
+        }
+
+        // Obtener el perfil del usuario
         return await _getUserProfile(response.user!.id);
       } else {
-        throw Exception(
-          'No se pudo restaurar la sesión con el token guardado.',
+        // Sesión expirada, pero NO deshabilitar biometría
+        throw BiometricAuthException(
+          'SESSION_EXPIRED',
+          'Tu sesión biométrica expiró. Por favor, inicia sesión manualmente.',
         );
       }
-
-      // ✅ CORRECCIÓN: Usar AuthException en lugar de GotrueException
     } on AuthException catch (e) {
       debugPrint('Error en login biométrico (Auth): $e');
-      await disableBiometricForCurrentUser();
-      throw Exception(
-        'Tu sesión biométrica expiró. Por favor, inicia sesión manualmente y habilítala de nuevo.',
+      // NO deshabilitar biometría por errores de sesión expirada
+      throw BiometricAuthException(
+        'SESSION_EXPIRED',
+        'Tu sesión biométrica expiró. Por favor, inicia sesión manualmente.',
       );
     } catch (e) {
       debugPrint('Error en login biométrico (Otro): $e');
       if (e.toString().contains('Invalid Refresh Token')) {
-        await disableBiometricForCurrentUser();
-        throw Exception(
-          'Tu sesión biométrica expiró. Por favor, inicia sesión manualmente y habilítala de nuevo.',
+        // NO deshabilitar biometría por token inválido, solo informar
+        throw BiometricAuthException(
+          'SESSION_EXPIRED',
+          'Tu sesión biométrica expiró. Por favor, inicia sesión manualmente.',
         );
       }
       rethrow;
