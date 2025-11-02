@@ -49,7 +49,7 @@ SELECT
   'Dispositivo principal' as device_name,
   biometric_enabled,
   created_at as registered_at,
-  updated_at as last_used_at
+  created_at as last_used_at  -- ✅ CORREGIDO: Usar created_at en lugar de updated_at
 FROM public.users
 WHERE device_id IS NOT NULL
   AND biometric_enabled = true
