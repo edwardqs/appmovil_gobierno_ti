@@ -283,6 +283,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 BEGIN
+  -- ✅ CORREGIDO: Incluir todos los campos relevantes sin acceder a campos inexistentes
   INSERT INTO public.device_audit_log (user_id, device_id, action, details)
   VALUES (
     NEW.user_id,
@@ -290,8 +291,12 @@ BEGIN
     TG_OP,
     jsonb_build_object(
       'device_name', NEW.device_name,
+      'device_model', NEW.device_model,
+      'os_version', NEW.os_version,
       'biometric_enabled', NEW.biometric_enabled,
-      'is_active', NEW.is_active
+      'is_active', NEW.is_active,
+      'last_used_at', NEW.last_used_at,
+      'registered_at', NEW.registered_at
     )
   );
 
