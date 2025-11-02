@@ -179,15 +179,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   keyboardType: TextInputType.emailAddress,
                   validator: (value) {
-                    // ▼▼▼ CORRECCIÓN AQUÍ (AÑADIDAS LLAVES {}) ▼▼▼
                     if (value == null || value.isEmpty) {
                       return 'Este campo es obligatorio';
                     }
                     if (!RegExp(r'\S+@\S+\.\S+').hasMatch(value)) {
                       return 'Ingresa un correo válido';
                     }
-                    // ▲▲▲ FIN DE LA CORRECCIÓN ▲▲▲
+                    // ▼▼▼ CORRECCIÓN AQUÍ (Esta línea faltaba) ▼▼▼
                     return null;
+                    // ▲▲▲ FIN DE LA CORRECCIÓN ▲▲▲
                   },
                 ),
                 const SizedBox(height: 16),

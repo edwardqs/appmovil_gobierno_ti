@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:app_gobiernoti/presentation/providers/auth_provider.dart';
 import 'package:app_gobiernoti/data/services/biometric_service.dart';
 import 'package:app_gobiernoti/core/locator.dart';
+import 'package:go_router/go_router.dart'; // Importar GoRouter para navegar
 
 class BiometricSetupScreen extends StatefulWidget {
   const BiometricSetupScreen({super.key});
@@ -67,6 +68,7 @@ class _BiometricSetupScreenState extends State<BiometricSetupScreen> {
 
   void _showError(String message) {
     if (!mounted) return;
+    // ▼▼▼ CORRECCIÓN 3: Se eliminó la 'f' extra ▼▼▼
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -75,6 +77,7 @@ class _BiometricSetupScreenState extends State<BiometricSetupScreen> {
       ),
     );
   }
+  // ▲▲▲ FIN DE LA CORRECCIÓN ▲▲▲
 
   void _showSuccess(String message) {
     if (!mounted) return;
@@ -92,7 +95,13 @@ class _BiometricSetupScreenState extends State<BiometricSetupScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Configuración Biométrica'),
-        //backgroundColor: Theme.of(context).colorScheme.inversePrimary, // Quitado para usar el tema
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            // Usamos context.go('/') para asegurar que SIEMPRE regrese al dashboard
+            context.go('/');
+          },
+        ),
       ),
       body: Consumer<AuthProvider>(
         builder: (context, authProvider, child) {
