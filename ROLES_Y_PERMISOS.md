@@ -1,228 +1,395 @@
-# Estructura de Roles y Permisos - Sistema de Auditoría
+# 🧪 Guía Completa de Pruebas - Autenticación Biométrica Multi-Dispositivo
 
-## 📋 Resumen General
-
-Este documento describe la estructura completa de roles, permisos y políticas de seguridad implementadas en el sistema de gestión de riesgos y auditoría.
-
-## 🎭 Roles de Usuario
-
-### 1. Auditor Junior (`auditor_junior`)
-**Descripción**: Nivel básico de auditor con permisos limitados para tareas específicas asignadas.
-
-**Permisos**:
-- ✅ Ver riesgos asignados a él
-- ✅ Actualizar estado de riesgos asignados
-- ✅ Agregar comentarios a riesgos asignados
-- ✅ Subir imágenes a riesgos asignados
-- ✅ Generar análisis de IA para riesgos asignados
-- ✅ Ver su propio perfil
-- ✅ Actualizar su propio perfil
-- ✅ Gestionar sus sesiones biométricas
-- ✅ Ver sus propios logs de auditoría
-
-**Restricciones**:
-- ❌ No puede ver riesgos no asignados
-- ❌ No puede asignar riesgos a otros usuarios
-- ❌ No puede eliminar riesgos
-- ❌ No puede ver perfiles de otros usuarios
-- ❌ No puede acceder a logs de otros usuarios
-
-### 2. Auditor Senior (`auditor_senior`)
-**Descripción**: Auditor experimentado con permisos ampliados para supervisión y gestión.
-
-**Permisos** (incluye todos los de Auditor Junior más):
-- ✅ Ver todos los riesgos del sistema
-- ✅ Actualizar cualquier riesgo
-- ✅ Asignar riesgos a auditores junior
-- ✅ Agregar comentarios a cualquier riesgo
-- ✅ Cambiar estados de cualquier riesgo
-- ✅ Ver lista de auditores disponibles
-
-**Restricciones**:
-- ❌ No puede eliminar riesgos
-- ❌ No puede ver logs de auditoría de otros (solo gerentes)
-- ❌ No puede gestionar usuarios
-
-### 3. Gerente de Auditoría (`gerente_auditoria`)
-**Descripción**: Rol administrativo con acceso completo al sistema.
-
-**Permisos** (acceso total):
-- ✅ Ver, crear, actualizar y eliminar cualquier riesgo
-- ✅ Ver todos los usuarios del sistema
-- ✅ Asignar riesgos a cualquier auditor
-- ✅ Ver todos los logs de auditoría
-- ✅ Acceder a estadísticas completas del sistema
-- ✅ Gestionar configuraciones del sistema
-- ✅ Ver dashboards administrativos
-
-## 🔒 Políticas de Seguridad (RLS)
-
-### Tabla `users`
-```sql
--- Los usuarios pueden ver su propio perfil
-"Los usuarios pueden ver su propio perfil"
-USING (auth.uid() = id)
-
--- Los usuarios pueden actualizar su propio perfil  
-"Los usuarios pueden actualizar su propio perfil"
-USING (auth.uid() = id)
-
--- Los gerentes pueden ver todos los usuarios
-"Los gerentes pueden ver todos los usuarios"
-USING (role = 'gerente_auditoria' AND auth.uid() = id)
-```
-
-### Tabla `risks`
-```sql
--- Todos pueden ver riesgos (filtrado por asignación en app)
-"Todos los usuarios autenticados pueden ver riesgos"
-USING (auth.role() = 'authenticated')
-
--- Cualquier usuario autenticado puede crear riesgos
-"Los auditores pueden crear riesgos"
-WITH CHECK (auth.role() = 'authenticated')
-
--- Solo asignados o seniors/gerentes pueden actualizar
-"Los auditores asignados pueden actualizar sus riesgos"
-USING (assigned_user_id = auth.uid() OR user_role IN ('auditor_senior', 'gerente_auditoria'))
-
--- Solo gerentes pueden eliminar
-"Solo gerentes pueden eliminar riesgos"
-USING (user_role = 'gerente_auditoria')
-```
-
-### Tabla `audit_logs`
-```sql
--- Gerentes ven todos los logs
-"Los gerentes pueden ver todos los logs"
-USING (user_role = 'gerente_auditoria')
-
--- Usuarios ven solo sus logs
-"Los usuarios pueden ver sus propios logs"
-USING (user_id = auth.uid())
-```
-
-## 📊 Matriz de Permisos
-
-| Acción | Auditor Junior | Auditor Senior | Gerente |
-|--------|----------------|----------------|---------|
-| Ver riesgos propios | ✅ | ✅ | ✅ |
-| Ver todos los riesgos | ❌ | ✅ | ✅ |
-| Crear riesgos | ✅ | ✅ | ✅ |
-| Actualizar riesgos propios | ✅ | ✅ | ✅ |
-| Actualizar cualquier riesgo | ❌ | ✅ | ✅ |
-| Eliminar riesgos | ❌ | ❌ | ✅ |
-| Asignar riesgos | ❌ | ✅ | ✅ |
-| Ver usuarios | Propio | Lista auditores | Todos |
-| Ver logs de auditoría | Propios | Propios | Todos |
-| Gestionar biometría | Propia | Propia | Propia |
-| Subir imágenes | Riesgos propios | Cualquier riesgo | Cualquier riesgo |
-| Generar análisis IA | Riesgos propios | Cualquier riesgo | Cualquier riesgo |
-
-## 🔐 Seguridad Biométrica
-
-### Gestión de Sesiones
-- Cada usuario puede habilitar/deshabilitar su propia biometría
-- Los tokens biométricos se almacenan hasheados en `biometric_sessions`
-- Se registra cada uso de autenticación biométrica
-- Los gerentes pueden ver estadísticas de uso biométrico
-
-### Políticas de Sesiones
-```sql
--- Los usuarios gestionan solo sus sesiones biométricas
-"Los usuarios pueden gestionar sus sesiones biométricas"
-FOR ALL USING (user_id = auth.uid())
-```
-
-## 📈 Logging y Auditoría
-
-### Eventos Registrados
-- `login` / `logout`: Inicios y cierres de sesión
-- `create_risk`: Creación de nuevos riesgos
-- `update_risk`: Modificaciones a riesgos
-- `assign_risk`: Asignaciones de riesgos
-- `change_status`: Cambios de estado
-- `add_comment`: Adición de comentarios
-- `upload_image`: Subida de imágenes
-- `generate_ai_analysis`: Generación de análisis IA
-- `enable_biometric` / `disable_biometric`: Gestión biométrica
-
-### Información Capturada
-- Usuario que realiza la acción
-- Timestamp preciso
-- Detalles de la acción (JSON)
-- IP y User Agent
-- Estado de éxito/error
-
-## 🎯 Flujos de Trabajo por Rol
-
-### Flujo Auditor Junior
-1. **Login** → Dashboard con riesgos asignados
-2. **Seleccionar riesgo** → Ver detalles y actualizar
-3. **Cambiar estado** → De "Abierto" a "En Tratamiento"
-4. **Agregar evidencia** → Subir imágenes y comentarios
-5. **Solicitar análisis IA** → Generar insights automáticos
-6. **Finalizar** → Cambiar a "Pendiente de Revisión"
-
-### Flujo Auditor Senior
-1. **Login** → Dashboard con todos los riesgos
-2. **Revisar asignaciones** → Ver carga de trabajo de junior
-3. **Asignar nuevos riesgos** → Distribuir trabajo
-4. **Supervisar progreso** → Revisar riesgos en tratamiento
-5. **Aprobar/Rechazar** → Cambiar de "Pendiente" a "Cerrado" o devolver
-
-### Flujo Gerente de Auditoría
-1. **Login** → Dashboard ejecutivo con métricas
-2. **Revisar estadísticas** → KPIs y tendencias
-3. **Gestionar usuarios** → Ver perfiles y asignaciones
-4. **Auditar actividad** → Revisar logs del sistema
-5. **Tomar decisiones** → Basado en análisis y reportes
-
-## 🛡️ Consideraciones de Seguridad
-
-### Principios Aplicados
-- **Principio de menor privilegio**: Cada rol tiene solo los permisos mínimos necesarios
-- **Separación de responsabilidades**: Diferentes niveles de acceso y aprobación
-- **Trazabilidad completa**: Todos los cambios son registrados
-- **Autenticación fuerte**: Soporte biométrico opcional
-
-### Medidas Implementadas
-- Row Level Security (RLS) en todas las tablas
-- Triggers automáticos para logging
-- Validación de datos a nivel de base de datos
-- Encriptación de tokens biométricos
-- Políticas granulares por tabla y operación
-
-## 📝 Configuración Inicial
-
-### Pasos para Implementar
-1. **Ejecutar script SQL** en Supabase
-2. **Crear usuario administrador** inicial
-3. **Configurar políticas de Storage** para imágenes
-4. **Establecer variables de entorno** en la app
-5. **Probar flujos de cada rol** antes de producción
-
-### Variables de Entorno Requeridas
-```env
-SUPABASE_URL=https://tu-proyecto.supabase.co
-SUPABASE_ANON_KEY=tu-clave-anonima
-SUPABASE_SERVICE_ROLE_KEY=tu-clave-servicio (solo backend)
-```
-
-## 🔄 Mantenimiento y Monitoreo
-
-### Tareas Regulares
-- Revisar logs de auditoría semanalmente
-- Monitorear uso de sesiones biométricas
-- Verificar integridad de asignaciones
-- Analizar patrones de uso por rol
-
-### Métricas Importantes
-- Tiempo promedio de resolución por rol
-- Distribución de riesgos por auditor
-- Frecuencia de uso de análisis IA
-- Tasa de adopción biométrica
+## 📋 Tabla de Contenidos
+1. [Preparación del Entorno](#preparación-del-entorno)
+2. [Casos de Prueba Críticos](#casos-de-prueba-críticos)
+3. [Matriz de Escenarios](#matriz-de-escenarios)
+4. [Comandos de Verificación](#comandos-de-verificación)
 
 ---
 
-**Nota**: Esta estructura de permisos está diseñada para ser escalable y segura. Cualquier modificación debe ser evaluada cuidadosamente para mantener la integridad del sistema.
+## 🔧 Preparación del Entorno
+
+### 1. Ejecutar Scripts SQL
+```bash
+# En Supabase SQL Editor, ejecutar en orden:
+1. supabase_users_table_update.sql
+2. supabase_session_validation.sql
+```
+
+### 2. Verificar Configuración de Supabase
+```dart
+// lib/core/supabase_config.dart
+// Verificar que las credenciales sean correctas
+static const String supabaseUrl = 'https://ulcvogvadzjzkipbafll.supabase.co';
+static const String supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
+```
+
+### 3. Limpiar Estado de la Aplicación
+```bash
+# Limpiar caché de Flutter
+flutter clean
+flutter pub get
+
+# Desinstalar app del dispositivo (opcional pero recomendado)
+# Esto limpia todas las credenciales almacenadas localmente
+```
+
+---
+
+## ✅ Casos de Prueba Críticos
+
+### **CASO 1: Login Básico con Email/Contraseña**
+
+#### Objetivo
+Verificar que el login tradicional funciona correctamente y renueva credenciales biométricas si estaban habilitadas.
+
+#### Pasos
+1. Abrir la app en **Dispositivo A**
+2. Iniciar sesión con:
+   - Email: `test@example.com`
+   - Contraseña: `password123`
+3. Verificar que se accede al dashboard
+
+#### Resultado Esperado
+✅ Login exitoso
+✅ Dashboard se muestra correctamente
+✅ Perfil de usuario cargado con rol correcto
+
+#### Logs Esperados
+```
+🔐 [LOGIN_EMAIL] Iniciando login con email...
+✅ [LOGIN_EMAIL] Login exitoso, obteniendo perfil...
+👤 [LOGIN_EMAIL] Perfil obtenido. Biometría habilitada: false
+```
+
+---
+
+### **CASO 2: Habilitar Biometría por Primera Vez**
+
+#### Objetivo
+Verificar que se puede habilitar la biometría y que las credenciales se guardan correctamente.
+
+#### Pasos
+1. Con sesión activa en **Dispositivo A**
+2. Ir a `Dashboard → Menú → Configurar Biometría`
+3. Presionar "Habilitar Biometría"
+4. Completar autenticación biométrica (huella/rostro)
+5. Verificar mensaje de éxito
+
+#### Resultado Esperado
+✅ Autenticación biométrica solicitada
+✅ Mensaje: "¡Acceso biométrico habilitado exitosamente!"
+✅ Botón de huella visible en pantalla de login
+
+#### Logs Esperados
+```
+🔐 [BIOMETRIC] Iniciando habilitación de biometría...
+✅ [BIOMETRIC] Sesión válida (expira en X minutos)
+💾 [BIOMETRIC] Credenciales guardadas en secure storage
+📱 [BIOMETRIC] Device ID: 1234567890_user-uuid
+✅ [BIOMETRIC] Estado biométrico y device_id actualizados en la base de datos
+```
+
+#### Verificación en Supabase
+```sql
+-- Ejecutar en Supabase SQL Editor
+SELECT id, email, biometric_enabled, device_id, updated_at
+FROM public.users
+WHERE email = 'test@example.com';
+```
+
+**Resultado esperado:**
+| biometric_enabled | device_id | 
+|-------------------|-----------|
+| true | 1234567890_user-uuid |
+
+---
+
+### **CASO 3: Login Biométrico en el Mismo Dispositivo**
+
+#### Objetivo
+Verificar que el login biométrico funciona correctamente en el dispositivo donde se habilitó.
+
+#### Pasos
+1. Cerrar sesión en **Dispositivo A**
+2. En pantalla de login, presionar el botón de huella 👆
+3. Completar autenticación biométrica
+
+#### Resultado Esperado
+✅ Autenticación biométrica solicitada
+✅ Login exitoso sin pedir email/contraseña
+✅ Dashboard se muestra correctamente
+
+#### Logs Esperados
+```
+🔐 [LOGIN_BIOMETRIC] Iniciando login biométrico...
+✅ [LOGIN_BIOMETRIC] Autenticación biométrica exitosa
+📱 [LOGIN_BIOMETRIC] Credenciales encontradas, parseando...
+🔄 [LOGIN_BIOMETRIC] Intentando refrescar sesión con refresh_token...
+✅ [LOGIN_BIOMETRIC] Sesión refrescada exitosamente
+✅ [LOGIN_BIOMETRIC] Perfil de usuario obtenido: test@example.com
+```
+
+---
+
+### **CASO 4: Login Manual en Dispositivo B (Crítico)**
+
+#### Objetivo
+Verificar que al iniciar sesión en un segundo dispositivo, las credenciales del primero siguen funcionando.
+
+#### Pasos
+1. En **Dispositivo B** (nuevo dispositivo), iniciar sesión manualmente:
+   - Email: `test@example.com`
+   - Contraseña: `password123`
+2. Verificar acceso al dashboard
+3. **SIN CERRAR SESIÓN en Dispositivo B**, volver a **Dispositivo A**
+4. Intentar login biométrico en **Dispositivo A**
+
+#### Resultado Esperado en Dispositivo B
+✅ Login exitoso
+✅ Dashboard accesible
+✅ Logs muestran renovación de credenciales (si biometría estaba habilitada)
+
+#### Resultado Esperado en Dispositivo A
+✅ Login biométrico funciona correctamente
+✅ **NO se muestra error de "sesión expirada"**
+✅ Ambos dispositivos pueden estar autenticados simultáneamente
+
+#### Logs Esperados en Dispositivo A
+```
+🔐 [LOGIN_BIOMETRIC] Iniciando login biométrico...
+✅ [LOGIN_BIOMETRIC] Autenticación biométrica exitosa
+📱 [BIOMETRIC] Device ID: 1234567890_user-uuid (coincide)
+✅ [LOGIN_BIOMETRIC] Sesión refrescada exitosamente
+```
+
+---
+
+### **CASO 5: Habilitar Biometría en Dispositivo B**
+
+#### Objetivo
+Verificar que se puede habilitar biometría en un segundo dispositivo sin afectar al primero.
+
+#### Pasos
+1. En **Dispositivo B** (con sesión activa)
+2. Ir a `Dashboard → Menú → Configurar Biometría`
+3. Presionar "Habilitar Biometría"
+4. Completar autenticación biométrica
+5. Cerrar sesión
+6. Probar login biométrico en **Dispositivo B**
+7. Probar login biométrico en **Dispositivo A**
+
+#### Resultado Esperado
+✅ Biometría se habilita en **Dispositivo B**
+✅ Login biométrico funciona en **Dispositivo B**
+✅ Login biométrico sigue funcionando en **Dispositivo A**
+✅ Cada dispositivo tiene su propio `device_id`
+
+#### Verificación en Supabase
+```sql
+-- Ver auditoría de cambios biométricos
+SELECT * FROM public.biometric_audit_log
+WHERE user_id = (SELECT id FROM public.users WHERE email = 'test@example.com')
+ORDER BY created_at DESC;
+```
+
+**Resultado esperado:**
+| action | device_id | old_device_id |
+|--------|-----------|---------------|
+| device_changed | 0987654321_user-uuid | 1234567890_user-uuid |
+
+---
+
+### **CASO 6: Deshabilitar Biometría**
+
+#### Objetivo
+Verificar que al deshabilitar la biometría se limpian las credenciales correctamente.
+
+#### Pasos
+1. Con sesión activa en **Dispositivo A**
+2. Ir a `Dashboard → Menú → Configurar Biometría`
+3. Presionar "Deshabilitar Biometría"
+4. Verificar mensaje de confirmación
+5. Cerrar sesión
+6. Intentar login biométrico (botón de huella NO debe estar visible o debe estar deshabilitado)
+
+#### Resultado Esperado
+✅ Mensaje: "Acceso biométrico deshabilitado"
+✅ Botón de huella desaparece o se deshabilita
+✅ Credenciales locales limpiadas
+
+#### Verificación en Supabase
+```sql
+SELECT biometric_enabled, device_id FROM public.users
+WHERE email = 'test@example.com';
+```
+
+**Resultado esperado:**
+| biometric_enabled | device_id |
+|-------------------|-----------|
+| false | NULL |
+
+---
+
+### **CASO 7: Manejo de Sesión Expirada (Edge Case)**
+
+#### Objetivo
+Verificar que el sistema maneja correctamente un refresh_token expirado.
+
+#### Pasos
+1. Habilitar biometría en **Dispositivo A**
+2. **Esperar 60 días** (o modificar manualmente el `expires_at` en la BD)
+3. Intentar login biométrico
+
+#### Resultado Esperado
+❌ Error: "Credenciales biométricas expiradas. Inicia sesión manualmente."
+✅ Credenciales locales limpiadas automáticamente
+✅ Usuario puede iniciar sesión manualmente
+
+#### Simulación Manual
+```sql
+-- Simular expiración de credenciales
+UPDATE public.users
+SET updated_at = NOW() - INTERVAL '61 days'
+WHERE email = 'test@example.com';
+```
+
+---
+
+### **CASO 8: Device ID Mismatch (Seguridad)**
+
+#### Objetivo
+Verificar que no se puede usar credenciales biométricas de otro dispositivo.
+
+#### Pasos
+1. Habilitar biometría en **Dispositivo A**
+2. **Extraer credenciales** (solo con fines de prueba, NO hacer esto en producción):
+   - Android: `/data/data/com.appbogiernoti.app_gobiernoti/shared_prefs/FlutterSecureStorage.xml`
+   - iOS: Keychain Access
+3. Copiar credenciales a **Dispositivo B**
+4. Intentar login biométrico en **Dispositivo B**
+
+#### Resultado Esperado
+❌ Error: "Este dispositivo no coincide con el registrado. Inicia sesión manualmente."
+✅ No se permite acceso con credenciales de otro dispositivo
+
+---
+
+## 📊 Matriz de Escenarios
+
+| Escenario | Dispositivo A | Dispositivo B | Resultado Esperado |
+|-----------|---------------|---------------|---------------------|
+| Login manual | ✅ Activo | - | Acceso garantizado |
+| Habilitar biometría | ✅ Habilitado | - | Credenciales guardadas |
+| Login biométrico | ✅ Login exitoso | - | Acceso sin contraseña |
+| Login manual en B | ✅ Sigue activo | ✅ Nuevo login | Ambos activos |
+| Login biométrico A | ✅ Funciona | ✅ Activo manual | Ambos funcionan |
+| Habilitar biometría B | ✅ Sigue funcionando | ✅ Biometría habilitada | Independientes |
+| Deshabilitar en A | ❌ Biometría OFF | ✅ Sigue funcionando | Solo B tiene biometría |
+
+---
+
+## 🛠️ Comandos de Verificación
+
+### Ver Estado de Sesiones Activas
+```sql
+-- Ver usuarios con biometría habilitada
+SELECT 
+    id,
+    email,
+    name,
+    role,
+    biometric_enabled,
+    device_id,
+    created_at,
+    updated_at
+FROM public.users
+WHERE biometric_enabled = TRUE
+ORDER BY updated_at DESC;
+```
+
+### Ver Auditoría de Cambios Biométricos
+```sql
+SELECT 
+    bal.created_at,
+    u.email,
+    bal.action,
+    bal.device_id,
+    bal.old_device_id
+FROM public.biometric_audit_log bal
+JOIN public.users u ON u.id = bal.user_id
+ORDER BY bal.created_at DESC
+LIMIT 50;
+```
+
+### Ver Estadísticas de Uso Biométrico
+```sql
+SELECT * FROM public.get_biometric_stats();
+```
+
+### Limpiar Dispositivos Antiguos (Mantenimiento)
+```sql
+-- Deshabilitar biometría para usuarios inactivos por más de 60 días
+SELECT * FROM public.cleanup_old_biometric_devices(60);
+```
+
+---
+
+## 🐛 Troubleshooting
+
+### Error: "Credenciales biométricas no encontradas"
+**Causa**: Credenciales locales no existen o fueron limpiadas.
+**Solución**: Iniciar sesión manualmente y volver a habilitar biometría.
+
+### Error: "Este dispositivo no coincide con el registrado"
+**Causa**: El `device_id` local no coincide con el guardado en la BD.
+**Solución**: Deshabilitar y volver a habilitar biometría en este dispositivo.
+
+### Error: "Sesión biométrica expirada"
+**Causa**: El `refresh_token` guardado expiró.
+**Solución**: Iniciar sesión manualmente para renovar credenciales.
+
+### Botón de Huella no Aparece
+**Verificar**:
+1. `SharedPreferences` → `biometric_enabled` debe ser `true`
+2. `FlutterSecureStorage` → Debe tener credenciales guardadas
+3. Verificar logs de `checkBiometricStatus()`
+
+---
+
+## ✅ Checklist Final
+
+Antes de considerar las pruebas completas, verificar:
+
+- [ ] Login manual funciona en ambos dispositivos
+- [ ] Habilitar biometría guarda `device_id` en BD
+- [ ] Login biométrico funciona en el mismo dispositivo
+- [ ] Login manual en dispositivo B no invalida credenciales de A
+- [ ] Ambos dispositivos pueden tener biometría habilitada simultáneamente
+- [ ] Deshabilitar biometría limpia credenciales locales y en BD
+- [ ] Manejo correcto de errores (token expirado, device mismatch)
+- [ ] Auditoría registra todos los cambios correctamente
+- [ ] No hay logs de error en consola durante flujos normales
+
+---
+
+## 📝 Notas Adicionales
+
+### Seguridad
+- Las credenciales biométricas NUNCA salen del dispositivo
+- El `device_id` es único por dispositivo y no se puede falsificar fácilmente
+- El `refresh_token` se guarda encriptado en el Keychain/Keystore del dispositivo
+
+### Performance
+- El login biométrico es ~3x más rápido que el manual
+- La renovación automática de credenciales evita re-autenticaciones innecesarias
+
+### Mantenimiento
+- Ejecutar `cleanup_old_biometric_devices(60)` mensualmente como tarea cron
+- Monitorear tabla `biometric_audit_log` para detectar patrones anómalos
+
+---
+
+**Última actualización**: 2024-01-XX
+**Versión del sistema**: 1.0.0
