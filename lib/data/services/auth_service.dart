@@ -102,8 +102,10 @@ class AuthService {
 
       if (response != null && response['success'] == true) {
         final userData = response['user'];
-        final prefs = await SharedPreferences.getInstance();
-        final biometricEnabled = prefs.getBool(_biometricEnabledKey) ?? false;
+        // 🔧 [FIX] Leer biometricEnabled desde la base de datos en lugar de SharedPreferences
+        final biometricEnabled = userData['biometric_enabled'] ?? false;
+        
+        print('🔍 [PROFILE] Usuario: ${userData['email']}, biometricEnabled desde DB: $biometricEnabled');
 
         return UserModel(
           id: userData['id'],
