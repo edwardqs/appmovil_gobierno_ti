@@ -137,8 +137,17 @@ class AuthService {
         '👤 [LOGIN_EMAIL] Perfil obtenido. Biometría habilitada: ${user.biometricEnabled}',
       );
 
+      // ✅ IMPORTANTE: Si el usuario tiene biometría habilitada en BD,
+      // renovar las credenciales locales para mantener sincronización
       if (user.biometricEnabled && response.session != null) {
+        print('🔄 [LOGIN_EMAIL] Usuario tiene biometría habilitada, renovando credenciales...');
         await _renewBiometricCredentials(response.session!);
+
+        // Asegurar que el flag local esté sincronizado
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool(_keyBiometricEnabled, true);
+
+        print('✅ [LOGIN_EMAIL] Credenciales biométricas renovadas y sincronizadas');
       }
 
       return user;
@@ -155,19 +164,15 @@ class AuthService {
     try {
       print('🔐 [LOGOUT] Cerrando sesión...');
 
-      // ✅ Limpiar datos biométricos locales
-      await _clearBiometricData();
+      // ✅ IMPORTANTE: NO limpiar credenciales biométricas en logout
+      // Las credenciales deben persistir para permitir login biométrico
+      // Solo se limpian cuando el usuario DESHABILITA la biometría explícitamente
 
-      // ✅ Cerrar sesión en Supabase
       await _supabase.auth.signOut();
 
-      print('✅ [LOGOUT] Sesión cerrada y datos locales limpiados');
+      print('✅ [LOGOUT] Sesión cerrada (credenciales biométricas preservadas)');
     } catch (e) {
       print('❌ [LOGOUT] Error al cerrar sesión: $e');
-      // Aunque falle, intentar limpiar datos locales
-      try {
-        await _clearBiometricData();
-      } catch (_) {}
       throw AuthServiceException('LOGOUT_ERROR', 'Error al cerrar sesión');
     }
   }
@@ -572,6 +577,7 @@ class AuthService {
     try {
       print('🔄 [BIOMETRIC] Renovando credenciales biométricas...');
 
+      // Renovar tokens
       await _secureStorage.write(
         key: _keyRefreshToken,
         value: session.refreshToken,
@@ -580,6 +586,27 @@ class AuthService {
         key: _keyAccessToken,
         value: session.accessToken,
       );
+
+      // ✅ IMPORTANTE: También guardar email y device_id si no existen
+      // Esto asegura que checkBiometricStatus() funcione correctamente
+      final existingEmail = await _secureStorage.read(key: _keyUserEmail);
+      if (existingEmail == null && session.user?.email != null) {
+        await _secureStorage.write(
+          key: _keyUserEmail,
+          value: session.user!.email!,
+        );
+        print('📧 [BIOMETRIC] Email guardado: ${session.user!.email}');
+      }
+
+      final existingDeviceId = await _secureStorage.read(key: _keyDeviceId);
+      if (existingDeviceId == null) {
+        final deviceId = await _getDeviceId();
+        await _secureStorage.write(
+          key: _keyDeviceId,
+          value: deviceId,
+        );
+        print('📱 [BIOMETRIC] Device ID guardado: $deviceId');
+      }
 
       print('✅ [BIOMETRIC] Credenciales renovadas exitosamente');
     } catch (e) {
