@@ -491,17 +491,22 @@ class AuthService {
   Future<UserModel?> loginWithBiometrics() async {
     try {
       print('🔐 [LOGIN_BIOMETRIC] Iniciando login biométrico...');
+      print('🔐 [AUTH_SERVICE] Llamando a _biometricService.authenticate()...');
       
       final isAuthenticated = await _biometricService.authenticate(
         'Inicia sesión con tu huella',
       );
 
+      print('🔐 [AUTH_SERVICE] Resultado de autenticación biométrica: $isAuthenticated');
+
       if (!isAuthenticated) {
         print('❌ [LOGIN_BIOMETRIC] Autenticación biométrica cancelada');
+        print('🚫 [AUTH_SERVICE] Autenticación biométrica falló o fue cancelada');
         return null;
       }
 
       print('✅ [LOGIN_BIOMETRIC] Autenticación biométrica exitosa');
+      print('🔐 [AUTH_SERVICE] Recuperando sesión desde secure storage...');
 
       // Leer la sesión JSON guardada
       final sessionJson = await _secureStorage.read(
@@ -512,6 +517,7 @@ class AuthService {
 
       if (sessionJson == null) {
         print('❌ [LOGIN_BIOMETRIC] No se encontró sesión guardada');
+        print('❌ [AUTH_SERVICE] No hay datos de sesión guardados');
         throw BiometricAuthException(
           'CREDENTIALS_NOT_FOUND',
           'Credenciales biométricas no encontradas. Inicia sesión manualmente para renovar las credenciales.',
@@ -519,15 +525,18 @@ class AuthService {
       }
 
       print('📱 [LOGIN_BIOMETRIC] Sesión encontrada, intentando recuperar sesión...');
+      print('🔐 [AUTH_SERVICE] Datos de sesión encontrados, parseando...');
 
       try {
         // Intentar recuperar la sesión primero
+        print('🔐 [AUTH_SERVICE] Recuperando sesión en Supabase...');
         final response = await _supabase.auth.recoverSession(sessionJson);
 
         print('🔄 [LOGIN_BIOMETRIC] Respuesta de recoverSession: ${response.session != null ? 'Sesión recuperada' : 'Sin sesión'}');
 
         if (response.session != null) {
           print('✅ [LOGIN_BIOMETRIC] Sesión recuperada exitosamente');
+          print('✅ [AUTH_SERVICE] Sesión recuperada exitosamente: ${response.session!.user.email}');
           
           // Guardar la nueva sesión actualizada
           print('🔄 [LOGIN_BIOMETRIC] Guardando nueva sesión...');
@@ -541,10 +550,12 @@ class AuthService {
           // Obtener el perfil del usuario
           final userProfile = await _getUserProfile(response.session!.user.id);
           print('👤 [LOGIN_BIOMETRIC] Perfil de usuario obtenido: ${userProfile.email}');
+          print('✅ [AUTH_SERVICE] Perfil de usuario obtenido: ${userProfile.email}');
           
           return userProfile;
         } else {
           print('⚠️ [LOGIN_BIOMETRIC] No se pudo recuperar sesión, intentando con refresh token...');
+          print('❌ [AUTH_SERVICE] No se pudo recuperar la sesión del usuario');
           
           // Si no se puede recuperar la sesión, intentar usar solo el refresh token
           final sessionData = jsonDecode(sessionJson);
@@ -570,6 +581,7 @@ class AuthService {
                 // Obtener el perfil del usuario
                 final userProfile = await _getUserProfile(refreshResponse.session!.user.id);
                 print('👤 [LOGIN_BIOMETRIC] Perfil de usuario obtenido tras refresh: ${userProfile.email}');
+                print('✅ [AUTH_SERVICE] Perfil de usuario obtenido tras refresh: ${userProfile.email}');
                 
                 return userProfile;
               }
@@ -622,6 +634,7 @@ class AuthService {
       );
     } catch (e) {
       print('❌ [LOGIN_BIOMETRIC] Error general: $e');
+      print('❌ [AUTH_SERVICE] Error en loginWithBiometrics: $e');
       debugPrint('Error en login biométrico (Otro): $e');
       rethrow;
     }

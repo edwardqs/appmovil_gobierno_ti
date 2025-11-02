@@ -84,26 +84,35 @@ class AuthProvider extends ChangeNotifier {
 
   /// Inicia sesión con Biometría
   Future<void> loginWithBiometrics() async {
+    print('🔐 [AUTH_PROVIDER] Iniciando loginWithBiometrics...');
+    print('🔐 [AUTH_PROVIDER] Estado actual: $_status');
+    
     // Evitar múltiples intentos simultáneos
     if (_status == AuthStatus.loading) {
       print('⚠️ [AUTH_PROVIDER] Intento de login biométrico ya en progreso, ignorando...');
       return;
     }
 
+    print('🔄 [AUTH_PROVIDER] Cambiando estado a loading...');
     _status = AuthStatus.loading;
     _errorMessage = null;
     notifyListeners();
 
     try {
+      print('🔐 [AUTH_PROVIDER] Llamando a _authService.loginWithBiometrics()...');
       _user = await _authService.loginWithBiometrics();
+      
       if (_user != null) {
+        print('✅ [AUTH_PROVIDER] Login biométrico exitoso, usuario: ${_user!.email}');
         _status = AuthStatus.authenticated;
       } else {
         // Si loginWithBiometrics retorna null, significa que la autenticación fue cancelada
+        print('🚫 [AUTH_PROVIDER] Login biométrico cancelado (usuario null)');
         _status = AuthStatus.unauthenticated;
         _errorMessage = "Autenticación biométrica cancelada";
       }
     } catch (e) {
+      print('❌ [AUTH_PROVIDER] Error en loginWithBiometrics: $e');
       _status = AuthStatus.error;
       String errorMessage = e.toString().replaceFirst("Exception: ", "");
       
@@ -120,9 +129,13 @@ class AuthProvider extends ChangeNotifier {
       }
       
       _errorMessage = errorMessage;
-      print('❌ [AUTH_PROVIDER] Error en login biométrico: $errorMessage');
+      print('❌ [AUTH_PROVIDER] Error procesado: $errorMessage');
     }
+    
+    print('🔄 [AUTH_PROVIDER] Estado final: $_status');
+    print('🔄 [AUTH_PROVIDER] Notificando listeners...');
     notifyListeners();
+    print('✅ [AUTH_PROVIDER] loginWithBiometrics completado');
   }
 
   /// Registra un nuevo usuario

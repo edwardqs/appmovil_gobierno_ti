@@ -28,23 +28,43 @@ class RiskService {
       final fileName = '${riskId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final filePath = 'risk-images/$fileName';
 
-      // Subir archivo a Supabase Storage
-      await _supabase.storage
-          .from('risk-attachments')
-          .upload(filePath, file);
-
-      // Obtener URL pública
-      final publicUrl = _supabase.storage
-          .from('risk-attachments')
-          .getPublicUrl(filePath);
+      // Intentar subir archivo a Supabase Storage
+      // Primero intentamos con 'images', luego con 'risk-attachments'
+      String? publicUrl;
+      
+      try {
+        await _supabase.storage
+            .from('images')
+            .upload(filePath, file);
+        
+        publicUrl = _supabase.storage
+            .from('images')
+            .getPublicUrl(filePath);
+      } catch (e) {
+        print('⚠️ Bucket "images" no disponible, intentando con "risk-attachments": $e');
+        
+        try {
+          await _supabase.storage
+              .from('risk-attachments')
+              .upload(filePath, file);
+          
+          publicUrl = _supabase.storage
+              .from('risk-attachments')
+              .getPublicUrl(filePath);
+        } catch (e2) {
+          print('❌ Error con ambos buckets. Necesitas crear un bucket en Supabase Storage');
+          print('   Bucket sugerido: "images" o "risk-attachments"');
+          return null;
+        }
+      }
 
       // Registrar en auditoría
-      await _auditService.logImageUpload(riskId, publicUrl);
+      await _auditService.logImageUpload(riskId, publicUrl!);
 
       print('✅ Imagen subida exitosamente: $publicUrl');
       return publicUrl;
     } catch (e) {
-      print('❌ Error al subir imagen: $e');
+      print('❌ Error general al subir imagen: $e');
       return null;
     }
   }

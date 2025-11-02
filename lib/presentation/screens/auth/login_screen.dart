@@ -53,9 +53,16 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleBiometricLogin(AuthProvider authProvider) async {
+    print('🔐 [LOGIN_SCREEN] Iniciando _handleBiometricLogin...');
+    print('🔐 [LOGIN_SCREEN] Estado del provider antes: ${authProvider.status}');
+    
     await authProvider.loginWithBiometrics();
+    
+    print('🔐 [LOGIN_SCREEN] Estado del provider después: ${authProvider.status}');
+    print('🔐 [LOGIN_SCREEN] Error message: ${authProvider.errorMessage}');
 
     if (authProvider.status == AuthStatus.error && mounted) {
+      print('❌ [LOGIN_SCREEN] Mostrando SnackBar de error');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(authProvider.errorMessage ?? 'Error de biometría'),
@@ -63,6 +70,8 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
     }
+    
+    print('✅ [LOGIN_SCREEN] _handleBiometricLogin completado');
   }
 
   @override
