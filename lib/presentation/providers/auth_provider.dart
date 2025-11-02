@@ -53,8 +53,8 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Usamos el nuevo método del servicio
-      _user = await _authService.loginWithEmail(email, password);
+      // Usamos el método login del servicio
+      _user = await _authService.login(email, password);
       _status = AuthStatus.authenticated;
 
       // Sincroniza el estado biométrico (si está habilitado en el dispositivo)
