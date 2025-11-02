@@ -10,12 +10,12 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   // Controladores para los campos del formulario
-  final _nameController = TextEditingController(text: 'Carlos Ramirez');
-  final _roleController = TextEditingController(text: 'Auditor Jefe de TI');
-  final _emailController = TextEditingController(text: 'ciso@company.com');
-  final _dniController = TextEditingController(text: '12345678');
-  final _phoneController = TextEditingController(text: '987654321');
-  final _addressController = TextEditingController(text: 'Av. Principal 123, Lima');
+  final _nameController = TextEditingController();
+  final _roleController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _dniController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _addressController = TextEditingController();
 
   // Variable para almacenar la fecha de nacimiento
   DateTime? _birthDate;
@@ -23,7 +23,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _birthDate = DateTime(1990, 5, 15); // Fecha de ejemplo
+    // TODO: Cargar datos reales del usuario desde el provider o servicio
   }
 
   @override

@@ -84,7 +84,18 @@ class DashboardScreen extends StatelessWidget {
                 user.name,
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
-              accountEmail: Text(user.email),
+              accountEmail: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(user.email),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Rol: ${user.role != null ? UserModel.roleToDisplayString(user.role!) : 'Sin rol'}',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w300),
+                  ),
+                ],
+              ),
               currentAccountPicture: const CircleAvatar(
                 backgroundColor: Colors.white,
                 child: Icon(Icons.person, size: 40, color: AppColors.primary),
@@ -103,29 +114,11 @@ class DashboardScreen extends StatelessWidget {
             ),
             ListTile(
               leading: const Icon(Icons.fingerprint),
-              title: const Text('Configuración Biométrica'),
-              subtitle: const Text('Habilitar/deshabilitar biometría'),
+              title: const Text('Configurar Biometría'),
+              subtitle: const Text('Configurar autenticación biométrica'),
               onTap: () {
                 Navigator.pop(context);
                 context.go('/biometric-setup');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.wifi_outlined),
-              title: const Text('Prueba de Conexión'),
-              subtitle: const Text('Verificar Supabase'),
-              onTap: () {
-                Navigator.pop(context);
-                context.go('/connection-test');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.science_outlined),
-              title: const Text('Pruebas Supabase'),
-              subtitle: const Text('Probar tablas y funciones'),
-              onTap: () {
-                Navigator.pop(context);
-                context.go('/supabase-test');
               },
             ),
             const Divider(),

@@ -131,4 +131,12 @@ class MockAuthService extends _i1.Mock implements _i3.AuthService {
             returnValue: _i4.Future<bool>.value(false),
           )
           as _i4.Future<bool>);
+
+  @override
+  _i4.Future<bool> areBiometricCredentialsValid() =>
+      (super.noSuchMethod(
+            Invocation.method(#areBiometricCredentialsValid, []),
+            returnValue: _i4.Future<bool>.value(false),
+          )
+          as _i4.Future<bool>);
 }

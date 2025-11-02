@@ -3,13 +3,13 @@
 // Do not manually edit this file.
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
-import 'dart:async' as _i3;
+import 'dart:async' as _i5;
 
-import 'package:app_gobiernoti/data/models/risk_model.dart' as _i4;
+import 'package:app_gobiernoti/data/models/risk_model.dart' as _i2;
 import 'package:app_gobiernoti/data/models/user_model.dart' as _i6;
-import 'package:app_gobiernoti/data/services/risk_service.dart' as _i2;
+import 'package:app_gobiernoti/data/services/risk_service.dart' as _i3;
 import 'package:mockito/mockito.dart' as _i1;
-import 'package:mockito/src/dummies.dart' as _i5;
+import 'package:mockito/src/dummies.dart' as _i4;
 
 // ignore_for_file: type=lint
 // ignore_for_file: avoid_redundant_argument_values
@@ -26,45 +26,24 @@ import 'package:mockito/src/dummies.dart' as _i5;
 // ignore_for_file: subtype_of_sealed_class
 // ignore_for_file: invalid_use_of_internal_member
 
+class _FakeRisk_0 extends _i1.SmartFake implements _i2.Risk {
+  _FakeRisk_0(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
 /// A class which mocks [RiskService].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockRiskService extends _i1.Mock implements _i2.RiskService {
+class MockRiskService extends _i1.Mock implements _i3.RiskService {
   MockRiskService() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  _i3.Future<void> saveAiAnalysis(String? riskId, String? analysisText) =>
-      (super.noSuchMethod(
-            Invocation.method(#saveAiAnalysis, [riskId, analysisText]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
-          )
-          as _i3.Future<void>);
-
-  @override
-  _i3.Future<List<_i4.Risk>> getRisks() =>
-      (super.noSuchMethod(
-            Invocation.method(#getRisks, []),
-            returnValue: _i3.Future<List<_i4.Risk>>.value(<_i4.Risk>[]),
-          )
-          as _i3.Future<List<_i4.Risk>>);
-
-  @override
-  _i3.Future<void> addRisk(_i4.Risk? newRisk) =>
-      (super.noSuchMethod(
-            Invocation.method(#addRisk, [newRisk]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
-          )
-          as _i3.Future<void>);
-
-  @override
   String generateNewId() =>
       (super.noSuchMethod(
             Invocation.method(#generateNewId, []),
-            returnValue: _i5.dummyValue<String>(
+            returnValue: _i4.dummyValue<String>(
               this,
               Invocation.method(#generateNewId, []),
             ),
@@ -72,28 +51,63 @@ class MockRiskService extends _i1.Mock implements _i2.RiskService {
           as String);
 
   @override
-  _i3.Future<List<_i6.UserModel>> getAuditors() =>
+  _i5.Future<void> saveAiAnalysis(String? riskId, String? analysisText) =>
+      (super.noSuchMethod(
+            Invocation.method(#saveAiAnalysis, [riskId, analysisText]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<List<_i2.Risk>> getRisks() =>
+      (super.noSuchMethod(
+            Invocation.method(#getRisks, []),
+            returnValue: _i5.Future<List<_i2.Risk>>.value(<_i2.Risk>[]),
+          )
+          as _i5.Future<List<_i2.Risk>>);
+
+  @override
+  _i5.Future<List<_i2.Risk>> getRisksByUser(String? userId) =>
+      (super.noSuchMethod(
+            Invocation.method(#getRisksByUser, [userId]),
+            returnValue: _i5.Future<List<_i2.Risk>>.value(<_i2.Risk>[]),
+          )
+          as _i5.Future<List<_i2.Risk>>);
+
+  @override
+  _i5.Future<_i2.Risk> addRisk(_i2.Risk? newRisk) =>
+      (super.noSuchMethod(
+            Invocation.method(#addRisk, [newRisk]),
+            returnValue: _i5.Future<_i2.Risk>.value(
+              _FakeRisk_0(this, Invocation.method(#addRisk, [newRisk])),
+            ),
+          )
+          as _i5.Future<_i2.Risk>);
+
+  @override
+  _i5.Future<List<_i6.UserModel>> getAuditors() =>
       (super.noSuchMethod(
             Invocation.method(#getAuditors, []),
-            returnValue: _i3.Future<List<_i6.UserModel>>.value(
+            returnValue: _i5.Future<List<_i6.UserModel>>.value(
               <_i6.UserModel>[],
             ),
           )
-          as _i3.Future<List<_i6.UserModel>>);
+          as _i5.Future<List<_i6.UserModel>>);
 
   @override
-  _i3.Future<void> assignRiskToUser(String? riskId, _i6.UserModel? user) =>
+  _i5.Future<void> assignRiskToUser(String? riskId, _i6.UserModel? user) =>
       (super.noSuchMethod(
             Invocation.method(#assignRiskToUser, [riskId, user]),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i3.Future<void> updateRiskStatus(
+  _i5.Future<void> updateRiskStatus(
     String? riskId,
-    _i4.RiskStatus? newStatus, {
+    _i2.RiskStatus? newStatus, {
     String? reviewNotes,
   }) =>
       (super.noSuchMethod(
@@ -102,8 +116,64 @@ class MockRiskService extends _i1.Mock implements _i2.RiskService {
               [riskId, newStatus],
               {#reviewNotes: reviewNotes},
             ),
-            returnValue: _i3.Future<void>.value(),
-            returnValueForMissingStub: _i3.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i3.Future<void>);
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<_i2.Risk> updateRisk(_i2.Risk? risk) =>
+      (super.noSuchMethod(
+            Invocation.method(#updateRisk, [risk]),
+            returnValue: _i5.Future<_i2.Risk>.value(
+              _FakeRisk_0(this, Invocation.method(#updateRisk, [risk])),
+            ),
+          )
+          as _i5.Future<_i2.Risk>);
+
+  @override
+  _i5.Future<void> deleteRisk(String? riskId) =>
+      (super.noSuchMethod(
+            Invocation.method(#deleteRisk, [riskId]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<Map<String, dynamic>> getDashboardStats({String? userId}) =>
+      (super.noSuchMethod(
+            Invocation.method(#getDashboardStats, [], {#userId: userId}),
+            returnValue: _i5.Future<Map<String, dynamic>>.value(
+              <String, dynamic>{},
+            ),
+          )
+          as _i5.Future<Map<String, dynamic>>);
+
+  @override
+  _i5.Future<void> addRiskComment(
+    String? riskId,
+    String? comment, {
+    String? type = 'general',
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(
+              #addRiskComment,
+              [riskId, comment],
+              {#type: type},
+            ),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<List<Map<String, dynamic>>> getRiskComments(String? riskId) =>
+      (super.noSuchMethod(
+            Invocation.method(#getRiskComments, [riskId]),
+            returnValue: _i5.Future<List<Map<String, dynamic>>>.value(
+              <Map<String, dynamic>>[],
+            ),
+          )
+          as _i5.Future<List<Map<String, dynamic>>>);
 }

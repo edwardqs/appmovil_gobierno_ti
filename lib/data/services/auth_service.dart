@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_gobiernoti/data/models/user_model.dart';
 import 'package:app_gobiernoti/data/services/biometric_service.dart';
+import 'package:app_gobiernoti/data/services/audit_service.dart';
 import 'package:app_gobiernoti/core/locator.dart';
 
 /// Excepción personalizada para errores de autenticación
@@ -43,6 +44,7 @@ class UserProfileException implements Exception {
 class AuthService {
   final SupabaseClient _supabase = Supabase.instance.client;
   final BiometricService _biometricService = locator<BiometricService>();
+  final AuditService _auditService = AuditService();
 
   final _secureStorage = const FlutterSecureStorage();
 
@@ -70,6 +72,9 @@ class AuthService {
         
         print('👤 [LOGIN_EMAIL] Perfil obtenido. Biometría habilitada: ${userProfile.biometricEnabled}');
         
+        // Registrar login exitoso en auditoría
+        await _auditService.logLoginAttempt(email, success: true);
+        
         // Si el usuario tenía biometría habilitada, renovar automáticamente las credenciales
         if (userProfile.biometricEnabled) {
           print('🔄 [LOGIN_EMAIL] Iniciando renovación automática de credenciales biométricas...');
@@ -79,52 +84,116 @@ class AuthService {
         
         return userProfile;
       } else {
+        await _auditService.logLoginAttempt(email, success: false, error: 'Usuario no encontrado');
         throw Exception('Usuario no encontrado');
       }
     } on AuthException catch (e) {
+      await _auditService.logLoginAttempt(email, success: false, error: e.message);
       throw Exception('Error de autenticación: ${e.message}');
     } catch (e) {
+      await _auditService.logLoginAttempt(email, success: false, error: e.toString());
       throw Exception('Error desconocido: ${e.toString()}');
     }
   }
 
   /// Cierra la sesión del usuario.
   Future<void> signOut() async {
+    final currentUser = _supabase.auth.currentUser;
+    final userId = currentUser?.id;
+    final email = currentUser?.email;
+    
     await _supabase.auth.signOut(scope: SignOutScope.local);
+    
+    // Registrar logout en auditoría
+    await _auditService.logLogout(userId, email);
   }
 
-  /// Obtiene el perfil de usuario desde la RPC de Supabase.
+  /// Obtiene el perfil de usuario desde la tabla users directamente.
   Future<UserModel> _getUserProfile(String userId) async {
     try {
-      final response = await _supabase.rpc(
-        'get_user_profile',
-        params: {'p_user_id': userId},
-      );
+      print('🔍 [PROFILE] Obteniendo perfil para usuario: $userId');
+      
+      // Usar consulta directa en lugar de RPC para evitar problemas de políticas RLS
+      final response = await _supabase
+          .from('users')
+          .select('id, name, email, role, dni, phone, address, biometric_enabled')
+          .eq('id', userId)
+          .single();
 
-      if (response != null && response['success'] == true) {
-        final userData = response['user'];
-        // 🔧 [FIX] Leer biometricEnabled desde la base de datos en lugar de SharedPreferences
-        final biometricEnabled = userData['biometric_enabled'] ?? false;
+      print('🔍 [PROFILE] Respuesta de la consulta: $response');
+      print('🔍 [PROFILE] Rol obtenido de la BD: ${response['role']}');
+
+      if (response != null) {
+        final biometricEnabled = response['biometric_enabled'] ?? false;
+        final roleFromDB = response['role'];
+        final convertedRole = UserModel.roleFromString(roleFromDB);
         
-        print('🔍 [PROFILE] Usuario: ${userData['email']}, biometricEnabled desde DB: $biometricEnabled');
+        print('🔍 [PROFILE] Usuario: ${response['email']}, biometricEnabled desde DB: $biometricEnabled');
+        print('🔍 [PROFILE] Rol desde BD: "$roleFromDB" -> Convertido a: $convertedRole');
 
         return UserModel(
-          id: userData['id'],
-          name: userData['name'],
-          email: userData['email'],
-          role: UserModel.roleFromString(userData['role']),
+          id: response['id'],
+          name: response['name'],
+          email: response['email'],
+          role: UserModel.roleFromString(roleFromDB),
           biometricEnabled: biometricEnabled,
-          dni: userData['dni'],
-          phone: userData['phone'],
-          address: userData['address'],
+          dni: response['dni'],
+          phone: response['phone'],
+          address: response['address'],
         );
       } else {
-        throw Exception(
-          response?['message'] ?? 'Error al obtener el perfil del usuario',
-        );
+        throw Exception('No se encontró el perfil del usuario');
       }
     } catch (e) {
-      throw Exception('Error en RPC get_user_profile: ${e.toString()}');
+      print('❌ [PROFILE] Error al obtener perfil: $e');
+      
+      // Manejo específico para errores de RLS
+      if (e.toString().contains('row-level security policy') || 
+          e.toString().contains('infinite recursion detected')) {
+        print('⚠️ [PROFILE] Error de política RLS detectado - usando datos básicos del usuario Auth');
+        print('   Para corregir permanentemente: Ejecutar supabase_users_rls_fix.sql en Supabase SQL Editor');
+        
+        // Fallback: usar datos básicos del usuario de Auth
+        final currentUser = _supabase.auth.currentUser;
+        if (currentUser != null && currentUser.id == userId) {
+          // Intentar obtener el rol del JWT token primero
+          String? roleFromJWT;
+          try {
+            final session = _supabase.auth.currentSession;
+            if (session != null) {
+              // Decodificar el JWT para obtener el rol
+              final payload = session.accessToken.split('.')[1];
+              final normalizedPayload = base64Url.normalize(payload);
+              final decodedPayload = utf8.decode(base64Url.decode(normalizedPayload));
+              final Map<String, dynamic> jwtData = json.decode(decodedPayload);
+              roleFromJWT = jwtData['role'] as String?;
+              print('🔍 [PROFILE] Rol obtenido del JWT: $roleFromJWT');
+            }
+          } catch (jwtError) {
+            print('⚠️ [PROFILE] Error al decodificar JWT: $jwtError');
+          }
+          
+          // Usar el rol del JWT si está disponible, sino usar metadatos, sino usar default
+          final userRole = roleFromJWT ?? 
+                          currentUser.userMetadata?['role'] ?? 
+                          'auditor_junior';
+          
+          print('🔍 [PROFILE] Rol final asignado: $userRole');
+          
+          return UserModel(
+            id: currentUser.id,
+            name: currentUser.userMetadata?['name'] ?? 'Usuario',
+            email: currentUser.email ?? '',
+            role: UserModel.roleFromString(userRole),
+            biometricEnabled: false, // Por defecto false hasta que se pueda consultar la DB
+            dni: currentUser.userMetadata?['dni'],
+            phone: currentUser.userMetadata?['phone'],
+            address: currentUser.userMetadata?['address'],
+          );
+        }
+      }
+      
+      throw Exception('Error al obtener perfil de usuario: ${e.toString()}');
     }
   }
 
@@ -222,7 +291,7 @@ class AuthService {
         };
       }
 
-      // Verificar si la sesión está próxima a expirar (menos de 5 minutos)
+      // Verificar si la sesión está próxima a expirar (menos de 2 minutos)
       final now = DateTime.now();
       final expiresAt = DateTime.fromMillisecondsSinceEpoch(currentSession.expiresAt! * 1000);
       final timeUntilExpiry = expiresAt.difference(now);
@@ -233,7 +302,7 @@ class AuthService {
 
       Session sessionToSave;
 
-      if (timeUntilExpiry.inMinutes < 5) {
+      if (timeUntilExpiry.inMinutes < 2) {
         print('🔄 [BIOMETRIC] Sesión próxima a expirar, refrescando...');
         // Si la sesión expira pronto, refrescarla primero
         try {
@@ -249,10 +318,9 @@ class AuthService {
           print('✅ [BIOMETRIC] Sesión refrescada exitosamente');
         } catch (e) {
           print('❌ [BIOMETRIC] Error al refrescar sesión: $e');
-          return {
-            'success': false,
-            'message': 'Error al refrescar sesión: ${e.toString()}',
-          };
+          // Si no se puede refrescar, usar la sesión actual de todos modos
+          sessionToSave = currentSession;
+          print('⚠️ [BIOMETRIC] Usando sesión actual a pesar del error de refresh');
         }
       } else {
         // La sesión es válida, usar la sesión actual
@@ -286,6 +354,9 @@ class AuthService {
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_biometricEnabledKey, true);
+
+      // Registrar habilitación de biometría en auditoría
+      await _auditService.logBiometricAction(currentSession.user.id, true);
 
       print('✅ [BIOMETRIC] Biometría habilitada exitosamente');
       return {'success': true, 'message': 'Acceso biométrico habilitado'};
@@ -323,6 +394,11 @@ class AuthService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_biometricEnabledKey, false);
 
+      // Registrar deshabilitación de biometría en auditoría
+      if (currentSession != null) {
+        await _auditService.logBiometricAction(currentSession.user.id, false);
+      }
+
       return {'success': true, 'message': 'Acceso biométrico deshabilitado'};
     } catch (e) {
       return {'success': false, 'message': 'Error: ${e.toString()}'};
@@ -339,6 +415,14 @@ class AuthService {
         iOptions: _iosOptions,
         aOptions: _androidOptions,
       );
+      
+      // Limpiar también la clave del access token (por si había formato anterior)
+      await _secureStorage.delete(
+        key: '${_refreshTokenKey}_access',
+        iOptions: _iosOptions,
+        aOptions: _androidOptions,
+      );
+      
       print('🧹 [BIOMETRIC] Credenciales limpiadas (biometría sigue habilitada)');
     } catch (e) {
       print('❌ [BIOMETRIC] Error al limpiar credenciales: $e');
@@ -359,47 +443,38 @@ class AuthService {
         return;
       }
 
-      // Verificar si la sesión está próxima a expirar (menos de 5 minutos)
+      // Verificar si la sesión está próxima a expirar (menos de 2 minutos)
       final now = DateTime.now();
       final expiresAt = DateTime.fromMillisecondsSinceEpoch(currentSession.expiresAt! * 1000);
       final timeUntilExpiry = expiresAt.difference(now);
 
-      String accessTokenToSave;
-      String refreshTokenToSave;
+      Session sessionToSave;
 
-      if (timeUntilExpiry.inMinutes < 5) {
+      if (timeUntilExpiry.inMinutes < 2) {
         print('🔄 [BIOMETRIC] Sesión próxima a expirar, refrescando...');
         try {
           final refreshResponse = await _supabase.auth.refreshSession(currentSession.refreshToken);
           if (refreshResponse.session?.refreshToken == null) {
-            print('❌ [BIOMETRIC] No se pudo refrescar la sesión');
-            return;
+            print('❌ [BIOMETRIC] No se pudo refrescar la sesión, usando sesión actual');
+            sessionToSave = currentSession;
+          } else {
+            sessionToSave = refreshResponse.session!;
+            print('✅ [BIOMETRIC] Sesión refrescada exitosamente');
           }
-          accessTokenToSave = refreshResponse.session!.accessToken;
-          refreshTokenToSave = refreshResponse.session!.refreshToken!;
-          print('✅ [BIOMETRIC] Sesión refrescada exitosamente');
         } catch (e) {
-          print('❌ [BIOMETRIC] Error al refrescar sesión: $e');
-          return;
+          print('❌ [BIOMETRIC] Error al refrescar sesión, usando sesión actual: $e');
+          sessionToSave = currentSession;
         }
       } else {
-        // La sesión es válida, usar los tokens actuales
-        accessTokenToSave = currentSession.accessToken;
-        refreshTokenToSave = currentSession.refreshToken!;
-        print('✅ [BIOMETRIC] Usando tokens actuales (sesión válida)');
+        // La sesión es válida, usar la sesión actual
+        sessionToSave = currentSession;
+        print('✅ [BIOMETRIC] Usando sesión actual (sesión válida)');
       }
 
-      // Guardar access token y refresh token por separado
-      await _secureStorage.write(
-        key: '${_refreshTokenKey}_access',
-        value: accessTokenToSave,
-        iOptions: _iosOptions,
-        aOptions: _androidOptions,
-      );
-      
+      // Guardar la sesión completa en formato JSON (igual que enableBiometricForCurrentUser)
       await _secureStorage.write(
         key: _refreshTokenKey,
-        value: refreshTokenToSave,
+        value: jsonEncode(sessionToSave.toJson()),
         iOptions: _iosOptions,
         aOptions: _androidOptions,
       );
@@ -437,8 +512,6 @@ class AuthService {
 
       if (sessionJson == null) {
         print('❌ [LOGIN_BIOMETRIC] No se encontró sesión guardada');
-        // Solo limpiar credenciales, mantener biometría habilitada para que el usuario no tenga que reconfigurarla
-        await _clearBiometricCredentials();
         throw BiometricAuthException(
           'CREDENTIALS_NOT_FOUND',
           'Credenciales biométricas no encontradas. Inicia sesión manualmente para renovar las credenciales.',
@@ -448,7 +521,7 @@ class AuthService {
       print('📱 [LOGIN_BIOMETRIC] Sesión encontrada, intentando recuperar sesión...');
 
       try {
-        // Usar recoverSession con el JSON de sesión
+        // Intentar recuperar la sesión primero
         final response = await _supabase.auth.recoverSession(sessionJson);
 
         print('🔄 [LOGIN_BIOMETRIC] Respuesta de recoverSession: ${response.session != null ? 'Sesión recuperada' : 'Sin sesión'}');
@@ -456,7 +529,7 @@ class AuthService {
         if (response.session != null) {
           print('✅ [LOGIN_BIOMETRIC] Sesión recuperada exitosamente');
           
-          // Guardar la nueva sesión
+          // Guardar la nueva sesión actualizada
           print('🔄 [LOGIN_BIOMETRIC] Guardando nueva sesión...');
           await _secureStorage.write(
             key: _refreshTokenKey, 
@@ -471,30 +544,69 @@ class AuthService {
           
           return userProfile;
         } else {
-          print('❌ [LOGIN_BIOMETRIC] No se pudo establecer sesión válida');
+          print('⚠️ [LOGIN_BIOMETRIC] No se pudo recuperar sesión, intentando con refresh token...');
+          
+          // Si no se puede recuperar la sesión, intentar usar solo el refresh token
+          final sessionData = jsonDecode(sessionJson);
+          final refreshToken = sessionData['refresh_token'];
+          
+          if (refreshToken != null) {
+            print('🔄 [LOGIN_BIOMETRIC] Intentando refrescar sesión con refresh token...');
+            
+            try {
+              final refreshResponse = await _supabase.auth.refreshSession(refreshToken);
+              
+              if (refreshResponse.session != null) {
+                print('✅ [LOGIN_BIOMETRIC] Sesión refrescada exitosamente');
+                
+                // Guardar la nueva sesión
+                await _secureStorage.write(
+                  key: _refreshTokenKey, 
+                  value: jsonEncode(refreshResponse.session!.toJson()),
+                  iOptions: _iosOptions,
+                  aOptions: _androidOptions,
+                );
+                
+                // Obtener el perfil del usuario
+                final userProfile = await _getUserProfile(refreshResponse.session!.user.id);
+                print('👤 [LOGIN_BIOMETRIC] Perfil de usuario obtenido tras refresh: ${userProfile.email}');
+                
+                return userProfile;
+              }
+            } catch (refreshError) {
+              print('❌ [LOGIN_BIOMETRIC] Error al refrescar con refresh token: $refreshError');
+            }
+          }
+          
           throw BiometricAuthException(
             'SESSION_EXPIRED',
-            'Sesión biométrica expirada'
+            'Sesión biométrica expirada. Inicia sesión manualmente para renovar las credenciales.'
           );
         }
       } catch (e) {
         print('❌ [LOGIN_BIOMETRIC] Error al establecer sesión: $e');
-        // Si la sesión es inválida, limpiar credenciales
-        await _clearBiometricCredentials();
+        
+        // Solo limpiar credenciales si es un error irrecuperable
+        if (e.toString().contains('Invalid Refresh Token') || 
+            e.toString().contains('refresh_token_not_found') ||
+            e.toString().contains('JWT expired')) {
+          print('🧹 [LOGIN_BIOMETRIC] Token definitivamente expirado, limpiando credenciales...');
+          await _clearBiometricCredentials();
+        }
+        
         throw BiometricAuthException(
           'INVALID_SESSION',
-          'Sesión biométrica inválida'
+          'Sesión biométrica inválida. Inicia sesión manualmente para renovar las credenciales.'
         );
       }
     } on AuthException catch (e) {
       print('❌ [LOGIN_BIOMETRIC] Error AuthException: $e');
       
-      // Manejar específicamente el error de refresh token inválido
+      // Manejar específicamente errores de tokens expirados
       if (e.message.contains('Invalid Refresh Token') || 
-          e.message.contains('refresh_token_not_found')) {
-        print('🔄 [LOGIN_BIOMETRIC] Refresh token inválido, limpiando credenciales...');
-        
-        // Limpiar solo las credenciales, mantener biometría habilitada
+          e.message.contains('refresh_token_not_found') ||
+          e.message.contains('JWT expired')) {
+        print('🧹 [LOGIN_BIOMETRIC] Refresh token definitivamente inválido, limpiando credenciales...');
         await _clearBiometricCredentials();
         
         throw BiometricAuthException(
@@ -503,10 +615,10 @@ class AuthService {
         );
       }
       
-      // Para otros errores de autenticación
+      // Para otros errores de autenticación, no limpiar credenciales inmediatamente
       throw BiometricAuthException(
-        'SESSION_EXPIRED',
-        'Tu sesión biométrica expiró. Por favor, inicia sesión manualmente.',
+        'AUTH_ERROR',
+        'Error de autenticación. Intenta nuevamente o inicia sesión manualmente.',
       );
     } catch (e) {
       print('❌ [LOGIN_BIOMETRIC] Error general: $e');
@@ -519,5 +631,55 @@ class AuthService {
   Future<bool> checkBiometricStatus() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_biometricEnabledKey) ?? false;
+  }
+
+  /// Verifica si las credenciales biométricas están disponibles y son válidas.
+  /// Retorna true si las credenciales existen, false si no existen o son inválidas.
+  Future<bool> areBiometricCredentialsValid() async {
+    try {
+      final sessionJson = await _secureStorage.read(
+        key: _refreshTokenKey,
+        iOptions: _iosOptions,
+        aOptions: _androidOptions,
+      );
+
+      if (sessionJson == null) {
+        print('🔍 [CREDENTIALS_CHECK] No hay credenciales guardadas');
+        return false;
+      }
+
+      // Intentar parsear la sesión para verificar que es válida
+      try {
+        final sessionData = jsonDecode(sessionJson);
+        final refreshToken = sessionData['refresh_token'];
+        final expiresAt = sessionData['expires_at'];
+        
+        if (refreshToken == null) {
+          print('🔍 [CREDENTIALS_CHECK] No hay refresh token en las credenciales');
+          return false;
+        }
+
+        // Verificar si la sesión no ha expirado completamente
+        if (expiresAt != null) {
+          final expirationDate = DateTime.fromMillisecondsSinceEpoch(expiresAt * 1000);
+          final now = DateTime.now();
+          
+          // Si la sesión expiró hace más de 30 días, considerarla inválida
+          if (now.difference(expirationDate).inDays > 30) {
+            print('🔍 [CREDENTIALS_CHECK] Credenciales muy antiguas (>30 días)');
+            return false;
+          }
+        }
+
+        print('✅ [CREDENTIALS_CHECK] Credenciales válidas encontradas');
+        return true;
+      } catch (e) {
+        print('❌ [CREDENTIALS_CHECK] Error al parsear credenciales: $e');
+        return false;
+      }
+    } catch (e) {
+      print('❌ [CREDENTIALS_CHECK] Error al verificar credenciales: $e');
+      return false;
+    }
   }
 }

@@ -27,11 +27,30 @@ class BiometricService {
           // false: Permite biometría O el PIN/Patrón del dispositivo.
           // Para máxima seguridad (tipo app bancaria), se recomienda 'true'.
           biometricOnly: true,
-          stickyAuth: true, // Mantiene el diálogo si la app va a segundo plano
+          stickyAuth: false, // Evita bucles infinitos al no mantener el diálogo activo
         ),
       );
     } on PlatformException catch (e) {
-      print('Error durante la autenticación: $e');
+      print('Error durante la autenticación biométrica: $e');
+      
+      // Manejar códigos de error específicos para evitar bucles
+      if (e.code == 'UserCancel' || 
+          e.code == 'SystemCancel' || 
+          e.code == 'AppCancel') {
+        print('Autenticación biométrica cancelada por el usuario');
+        return false;
+      }
+      
+      if (e.code == 'BiometricNotAvailable' || 
+          e.code == 'BiometricNotEnrolled') {
+        print('Biometría no disponible o no configurada');
+        return false;
+      }
+      
+      // Para otros errores, también retornar false para evitar bucles
+      return false;
+    } catch (e) {
+      print('Error general en autenticación biométrica: $e');
       return false;
     }
   }

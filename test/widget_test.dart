@@ -34,6 +34,10 @@ void main() {
     // Mock the checkBiometricStatus method
     when(mockAuthService.checkBiometricStatus()).thenAnswer((_) async => false);
     
+    // Mock the RiskService methods to prevent MissingStubError
+    when(mockRiskService.getRisks()).thenAnswer((_) async => []);
+    when(mockRiskService.getAuditors()).thenAnswer((_) async => []);
+    
     // Create providers with mocked services
     final authProvider = AuthProvider();
     final riskProvider = RiskProvider(mockRiskService);

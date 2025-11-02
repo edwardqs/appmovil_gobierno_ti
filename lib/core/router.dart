@@ -5,11 +5,8 @@ import 'package:provider/provider.dart';
 import 'locator.dart';
 import '../presentation/providers/auth_provider.dart';
 import '../presentation/screens/auth/login_screen.dart';
-import '../presentation/screens/auth/register_screen.dart'; // <-- AÑADIR REGISTRO
-
+import '../presentation/screens/auth/register_screen.dart';
 import '../presentation/screens/dashboard/dashboard_screen.dart';
-import '../presentation/screens/connection_test_screen.dart';
-import '../presentation/screens/test/supabase_test_screen.dart';
 import '../presentation/screens/biometric_setup_screen.dart';
 
 // Creamos una instancia del router.
@@ -22,16 +19,8 @@ final GoRouter router = GoRouter(
     GoRoute(path: '/', builder: (context, state) => const DashboardScreen()),
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
     GoRoute(
-      path: '/register', // <-- AÑADIR RUTA DE REGISTRO
+      path: '/register',
       builder: (context, state) => const RegisterScreen(),
-    ),
-    GoRoute(
-      path: '/connection-test',
-      builder: (context, state) => const ConnectionTestScreen(),
-    ),
-    GoRoute(
-      path: '/supabase-test',
-      builder: (context, state) => const SupabaseTestScreen(),
     ),
     GoRoute(
       path: '/biometric-setup',

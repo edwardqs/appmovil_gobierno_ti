@@ -8,10 +8,7 @@ import '../../data/services/risk_service.dart';
 class RiskProvider with ChangeNotifier {
   final RiskService _riskService;
 
-  RiskProvider(this._riskService) {
-    fetchRisks();
-    fetchAuditors();
-  }
+  RiskProvider(this._riskService);
 
   List<Risk> _risks = [];
   List<Risk> get risks => _risks;
@@ -19,14 +16,18 @@ class RiskProvider with ChangeNotifier {
   List<UserModel> _auditors = [];
   List<UserModel> get auditors => _auditors;
 
-  bool _isLoading = true;
+  bool _isLoading = false;
   bool get isLoading => _isLoading;
+
+  bool _risksInitialized = false;
+  bool _auditorsInitialized = false;
 
   Future<void> fetchRisks() async {
     _isLoading = true;
     notifyListeners();
     try {
       _risks = await _riskService.getRisks();
+      _risksInitialized = true;
     } catch (e) {
       print(e);
     }
@@ -37,9 +38,24 @@ class RiskProvider with ChangeNotifier {
   Future<void> fetchAuditors() async {
     try {
       _auditors = await _riskService.getAuditors();
+      _auditorsInitialized = true;
       notifyListeners();
     } catch (e) {
       print(e);
+    }
+  }
+
+  /// Inicializa los riesgos solo si no han sido cargados previamente
+  Future<void> ensureRisksLoaded() async {
+    if (!_risksInitialized) {
+      await fetchRisks();
+    }
+  }
+
+  /// Inicializa los auditores solo si no han sido cargados previamente
+  Future<void> ensureAuditorsLoaded() async {
+    if (!_auditorsInitialized) {
+      await fetchAuditors();
     }
   }
 

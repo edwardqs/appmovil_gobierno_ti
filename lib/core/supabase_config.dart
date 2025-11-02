@@ -15,33 +15,6 @@ class SupabaseConfig {
   static SupabaseClient get client => Supabase.instance.client;
   static GoTrueClient get auth => client.auth;
 
-  /// Prueba la conexión con Supabase
-  static Future<Map<String, dynamic>> testConnection() async {
-    try {
-      // Intentar hacer una consulta simple para verificar la conexión
-      // Usamos la tabla 'users' que sí existe en nuestro esquema público
-      await client
-          .from('users') // Tabla de usuarios en el esquema público
-          .select('count')
-          .limit(1);
-      
-      return {
-        'success': true,
-        'message': 'Conexión exitosa con Supabase',
-        'timestamp': DateTime.now().toIso8601String(),
-        'url': supabaseUrl,
-      };
-    } catch (e) {
-      return {
-        'success': false,
-        'message': 'Error de conexión: ${e.toString()}',
-        'timestamp': DateTime.now().toIso8601String(),
-        'url': supabaseUrl,
-        'error': e.toString(),
-      };
-    }
-  }
-
   /// Verifica el estado de la sesión actual
   static Map<String, dynamic> getSessionStatus() {
     try {

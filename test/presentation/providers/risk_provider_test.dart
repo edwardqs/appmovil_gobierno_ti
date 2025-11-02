@@ -69,7 +69,7 @@ void main() {
       // Mock para generateNewId
       when(mockRiskService.generateNewId()).thenReturn('R002');
       // Mock para addRisk
-      when(mockRiskService.addRisk(any)).thenAnswer((_) async {});
+      when(mockRiskService.addRisk(any)).thenAnswer((_) async => newRisk);
       // Mock para el fetchRisks que se llama internamente
       when(mockRiskService.getRisks()).thenAnswer((_) async => [newRisk]);
 

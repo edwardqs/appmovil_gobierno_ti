@@ -3,13 +3,13 @@
 // Do not manually edit this file.
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
-import 'dart:async' as _i4;
+import 'dart:async' as _i5;
 
-import 'package:app_gobiernoti/data/models/risk_model.dart' as _i6;
+import 'package:app_gobiernoti/data/models/risk_model.dart' as _i3;
 import 'package:app_gobiernoti/data/models/user_model.dart' as _i2;
-import 'package:app_gobiernoti/data/services/auth_service.dart' as _i3;
+import 'package:app_gobiernoti/data/services/auth_service.dart' as _i4;
 import 'package:app_gobiernoti/data/services/biometric_service.dart' as _i8;
-import 'package:app_gobiernoti/data/services/risk_service.dart' as _i5;
+import 'package:app_gobiernoti/data/services/risk_service.dart' as _i6;
 import 'package:mockito/mockito.dart' as _i1;
 import 'package:mockito/src/dummies.dart' as _i7;
 
@@ -33,38 +33,43 @@ class _FakeUserModel_0 extends _i1.SmartFake implements _i2.UserModel {
     : super(parent, parentInvocation);
 }
 
+class _FakeRisk_1 extends _i1.SmartFake implements _i3.Risk {
+  _FakeRisk_1(Object parent, Invocation parentInvocation)
+    : super(parent, parentInvocation);
+}
+
 /// A class which mocks [AuthService].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockAuthService extends _i1.Mock implements _i3.AuthService {
+class MockAuthService extends _i1.Mock implements _i4.AuthService {
   MockAuthService() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  _i4.Future<_i2.UserModel> loginWithEmail(String? email, String? password) =>
+  _i5.Future<_i2.UserModel> loginWithEmail(String? email, String? password) =>
       (super.noSuchMethod(
             Invocation.method(#loginWithEmail, [email, password]),
-            returnValue: _i4.Future<_i2.UserModel>.value(
+            returnValue: _i5.Future<_i2.UserModel>.value(
               _FakeUserModel_0(
                 this,
                 Invocation.method(#loginWithEmail, [email, password]),
               ),
             ),
           )
-          as _i4.Future<_i2.UserModel>);
+          as _i5.Future<_i2.UserModel>);
 
   @override
-  _i4.Future<void> signOut() =>
+  _i5.Future<void> signOut() =>
       (super.noSuchMethod(
             Invocation.method(#signOut, []),
-            returnValue: _i4.Future<void>.value(),
-            returnValueForMissingStub: _i4.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i4.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i4.Future<_i2.UserModel> registerUser({
+  _i5.Future<_i2.UserModel> registerUser({
     required String? email,
     required String? password,
     required String? name,
@@ -83,7 +88,7 @@ class MockAuthService extends _i1.Mock implements _i3.AuthService {
               #phone: phone,
               #address: address,
             }),
-            returnValue: _i4.Future<_i2.UserModel>.value(
+            returnValue: _i5.Future<_i2.UserModel>.value(
               _FakeUserModel_0(
                 this,
                 Invocation.method(#registerUser, [], {
@@ -98,78 +103,60 @@ class MockAuthService extends _i1.Mock implements _i3.AuthService {
               ),
             ),
           )
-          as _i4.Future<_i2.UserModel>);
+          as _i5.Future<_i2.UserModel>);
 
   @override
-  _i4.Future<Map<String, dynamic>> enableBiometricForCurrentUser() =>
+  _i5.Future<Map<String, dynamic>> enableBiometricForCurrentUser() =>
       (super.noSuchMethod(
             Invocation.method(#enableBiometricForCurrentUser, []),
-            returnValue: _i4.Future<Map<String, dynamic>>.value(
+            returnValue: _i5.Future<Map<String, dynamic>>.value(
               <String, dynamic>{},
             ),
           )
-          as _i4.Future<Map<String, dynamic>>);
+          as _i5.Future<Map<String, dynamic>>);
 
   @override
-  _i4.Future<Map<String, dynamic>> disableBiometricForCurrentUser() =>
+  _i5.Future<Map<String, dynamic>> disableBiometricForCurrentUser() =>
       (super.noSuchMethod(
             Invocation.method(#disableBiometricForCurrentUser, []),
-            returnValue: _i4.Future<Map<String, dynamic>>.value(
+            returnValue: _i5.Future<Map<String, dynamic>>.value(
               <String, dynamic>{},
             ),
           )
-          as _i4.Future<Map<String, dynamic>>);
+          as _i5.Future<Map<String, dynamic>>);
 
   @override
-  _i4.Future<_i2.UserModel?> loginWithBiometrics() =>
+  _i5.Future<_i2.UserModel?> loginWithBiometrics() =>
       (super.noSuchMethod(
             Invocation.method(#loginWithBiometrics, []),
-            returnValue: _i4.Future<_i2.UserModel?>.value(),
+            returnValue: _i5.Future<_i2.UserModel?>.value(),
           )
-          as _i4.Future<_i2.UserModel?>);
+          as _i5.Future<_i2.UserModel?>);
 
   @override
-  _i4.Future<bool> checkBiometricStatus() =>
+  _i5.Future<bool> checkBiometricStatus() =>
       (super.noSuchMethod(
             Invocation.method(#checkBiometricStatus, []),
-            returnValue: _i4.Future<bool>.value(false),
+            returnValue: _i5.Future<bool>.value(false),
           )
-          as _i4.Future<bool>);
+          as _i5.Future<bool>);
+
+  @override
+  _i5.Future<bool> areBiometricCredentialsValid() =>
+      (super.noSuchMethod(
+            Invocation.method(#areBiometricCredentialsValid, []),
+            returnValue: _i5.Future<bool>.value(false),
+          )
+          as _i5.Future<bool>);
 }
 
 /// A class which mocks [RiskService].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockRiskService extends _i1.Mock implements _i5.RiskService {
+class MockRiskService extends _i1.Mock implements _i6.RiskService {
   MockRiskService() {
     _i1.throwOnMissingStub(this);
   }
-
-  @override
-  _i4.Future<void> saveAiAnalysis(String? riskId, String? analysisText) =>
-      (super.noSuchMethod(
-            Invocation.method(#saveAiAnalysis, [riskId, analysisText]),
-            returnValue: _i4.Future<void>.value(),
-            returnValueForMissingStub: _i4.Future<void>.value(),
-          )
-          as _i4.Future<void>);
-
-  @override
-  _i4.Future<List<_i6.Risk>> getRisks() =>
-      (super.noSuchMethod(
-            Invocation.method(#getRisks, []),
-            returnValue: _i4.Future<List<_i6.Risk>>.value(<_i6.Risk>[]),
-          )
-          as _i4.Future<List<_i6.Risk>>);
-
-  @override
-  _i4.Future<void> addRisk(_i6.Risk? newRisk) =>
-      (super.noSuchMethod(
-            Invocation.method(#addRisk, [newRisk]),
-            returnValue: _i4.Future<void>.value(),
-            returnValueForMissingStub: _i4.Future<void>.value(),
-          )
-          as _i4.Future<void>);
 
   @override
   String generateNewId() =>
@@ -183,28 +170,63 @@ class MockRiskService extends _i1.Mock implements _i5.RiskService {
           as String);
 
   @override
-  _i4.Future<List<_i2.UserModel>> getAuditors() =>
+  _i5.Future<void> saveAiAnalysis(String? riskId, String? analysisText) =>
+      (super.noSuchMethod(
+            Invocation.method(#saveAiAnalysis, [riskId, analysisText]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<List<_i3.Risk>> getRisks() =>
+      (super.noSuchMethod(
+            Invocation.method(#getRisks, []),
+            returnValue: _i5.Future<List<_i3.Risk>>.value(<_i3.Risk>[]),
+          )
+          as _i5.Future<List<_i3.Risk>>);
+
+  @override
+  _i5.Future<List<_i3.Risk>> getRisksByUser(String? userId) =>
+      (super.noSuchMethod(
+            Invocation.method(#getRisksByUser, [userId]),
+            returnValue: _i5.Future<List<_i3.Risk>>.value(<_i3.Risk>[]),
+          )
+          as _i5.Future<List<_i3.Risk>>);
+
+  @override
+  _i5.Future<_i3.Risk> addRisk(_i3.Risk? newRisk) =>
+      (super.noSuchMethod(
+            Invocation.method(#addRisk, [newRisk]),
+            returnValue: _i5.Future<_i3.Risk>.value(
+              _FakeRisk_1(this, Invocation.method(#addRisk, [newRisk])),
+            ),
+          )
+          as _i5.Future<_i3.Risk>);
+
+  @override
+  _i5.Future<List<_i2.UserModel>> getAuditors() =>
       (super.noSuchMethod(
             Invocation.method(#getAuditors, []),
-            returnValue: _i4.Future<List<_i2.UserModel>>.value(
+            returnValue: _i5.Future<List<_i2.UserModel>>.value(
               <_i2.UserModel>[],
             ),
           )
-          as _i4.Future<List<_i2.UserModel>>);
+          as _i5.Future<List<_i2.UserModel>>);
 
   @override
-  _i4.Future<void> assignRiskToUser(String? riskId, _i2.UserModel? user) =>
+  _i5.Future<void> assignRiskToUser(String? riskId, _i2.UserModel? user) =>
       (super.noSuchMethod(
             Invocation.method(#assignRiskToUser, [riskId, user]),
-            returnValue: _i4.Future<void>.value(),
-            returnValueForMissingStub: _i4.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i4.Future<void>);
+          as _i5.Future<void>);
 
   @override
-  _i4.Future<void> updateRiskStatus(
+  _i5.Future<void> updateRiskStatus(
     String? riskId,
-    _i6.RiskStatus? newStatus, {
+    _i3.RiskStatus? newStatus, {
     String? reviewNotes,
   }) =>
       (super.noSuchMethod(
@@ -213,10 +235,66 @@ class MockRiskService extends _i1.Mock implements _i5.RiskService {
               [riskId, newStatus],
               {#reviewNotes: reviewNotes},
             ),
-            returnValue: _i4.Future<void>.value(),
-            returnValueForMissingStub: _i4.Future<void>.value(),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
           )
-          as _i4.Future<void>);
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<_i3.Risk> updateRisk(_i3.Risk? risk) =>
+      (super.noSuchMethod(
+            Invocation.method(#updateRisk, [risk]),
+            returnValue: _i5.Future<_i3.Risk>.value(
+              _FakeRisk_1(this, Invocation.method(#updateRisk, [risk])),
+            ),
+          )
+          as _i5.Future<_i3.Risk>);
+
+  @override
+  _i5.Future<void> deleteRisk(String? riskId) =>
+      (super.noSuchMethod(
+            Invocation.method(#deleteRisk, [riskId]),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<Map<String, dynamic>> getDashboardStats({String? userId}) =>
+      (super.noSuchMethod(
+            Invocation.method(#getDashboardStats, [], {#userId: userId}),
+            returnValue: _i5.Future<Map<String, dynamic>>.value(
+              <String, dynamic>{},
+            ),
+          )
+          as _i5.Future<Map<String, dynamic>>);
+
+  @override
+  _i5.Future<void> addRiskComment(
+    String? riskId,
+    String? comment, {
+    String? type = 'general',
+  }) =>
+      (super.noSuchMethod(
+            Invocation.method(
+              #addRiskComment,
+              [riskId, comment],
+              {#type: type},
+            ),
+            returnValue: _i5.Future<void>.value(),
+            returnValueForMissingStub: _i5.Future<void>.value(),
+          )
+          as _i5.Future<void>);
+
+  @override
+  _i5.Future<List<Map<String, dynamic>>> getRiskComments(String? riskId) =>
+      (super.noSuchMethod(
+            Invocation.method(#getRiskComments, [riskId]),
+            returnValue: _i5.Future<List<Map<String, dynamic>>>.value(
+              <Map<String, dynamic>>[],
+            ),
+          )
+          as _i5.Future<List<Map<String, dynamic>>>);
 }
 
 /// A class which mocks [BiometricService].
@@ -228,18 +306,18 @@ class MockBiometricService extends _i1.Mock implements _i8.BiometricService {
   }
 
   @override
-  _i4.Future<bool> hasBiometrics() =>
+  _i5.Future<bool> hasBiometrics() =>
       (super.noSuchMethod(
             Invocation.method(#hasBiometrics, []),
-            returnValue: _i4.Future<bool>.value(false),
+            returnValue: _i5.Future<bool>.value(false),
           )
-          as _i4.Future<bool>);
+          as _i5.Future<bool>);
 
   @override
-  _i4.Future<bool> authenticate(String? reason) =>
+  _i5.Future<bool> authenticate(String? reason) =>
       (super.noSuchMethod(
             Invocation.method(#authenticate, [reason]),
-            returnValue: _i4.Future<bool>.value(false),
+            returnValue: _i5.Future<bool>.value(false),
           )
-          as _i4.Future<bool>);
+          as _i5.Future<bool>);
 }

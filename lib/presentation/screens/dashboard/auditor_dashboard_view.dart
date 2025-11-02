@@ -7,8 +7,23 @@ import '../../providers/risk_provider.dart';
 import '../../widgets/common/risk_list_item.dart';
 import '../risks/risk_detail_screen.dart';
 
-class AuditorDashboardView extends StatelessWidget {
+class AuditorDashboardView extends StatefulWidget {
   const AuditorDashboardView({super.key});
+
+  @override
+  State<AuditorDashboardView> createState() => _AuditorDashboardViewState();
+}
+
+class _AuditorDashboardViewState extends State<AuditorDashboardView> {
+  @override
+  void initState() {
+    super.initState();
+    // Cargar datos de forma lazy después de que el widget se haya construido
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final riskProvider = Provider.of<RiskProvider>(context, listen: false);
+      riskProvider.ensureRisksLoaded();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -73,7 +73,7 @@ class UserModel {
       case 'auditorSenior': // Formato camelCase de la base de datos
         return UserRole.auditorSenior;
       case 'Gerente Auditor':
-      case 'gerente_auditoria':
+      case 'gerente_auditoria': // ✅ CORRECTO: Formato de la BD
       case 'gerenteAuditoria': // Formato camelCase de la base de datos
       case 'gerente':
         return UserRole.gerenteAuditoria;
@@ -90,7 +90,7 @@ class UserModel {
       case UserRole.auditorSenior:
         return 'auditor_senior';
       case UserRole.gerenteAuditoria:
-        return 'gerente_auditoria';
+        return 'gerente_auditoria'; // ✅ CORRECTO: Usar el formato de la BD
       case UserRole.unknown:
         return 'auditor_junior'; // Default fallback
     }

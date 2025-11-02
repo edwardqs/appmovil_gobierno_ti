@@ -9,8 +9,23 @@ import '../../widgets/common/kpi_card.dart';
 import '../../../core/theme/app_colors.dart';
 import '../risks/risk_list_screen.dart';
 
-class ManagerDashboardView extends StatelessWidget {
+class ManagerDashboardView extends StatefulWidget {
   const ManagerDashboardView({super.key});
+
+  @override
+  State<ManagerDashboardView> createState() => _ManagerDashboardViewState();
+}
+
+class _ManagerDashboardViewState extends State<ManagerDashboardView> {
+  @override
+  void initState() {
+    super.initState();
+    // Cargar datos de forma lazy después de que el widget se haya construido
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final riskProvider = Provider.of<RiskProvider>(context, listen: false);
+      riskProvider.ensureRisksLoaded();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

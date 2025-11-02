@@ -175,39 +175,55 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
 
   void _showAssignAuditorDialog(BuildContext context) {
     final riskProvider = Provider.of<RiskProvider>(context, listen: false);
-    final auditors = riskProvider.auditors;
-
+    
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: const Text('Asignar a Auditor'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: auditors.length,
-              itemBuilder: (context, index) {
-                final auditor = auditors[index];
-                return ListTile(
-                  title: Text(auditor.name),
-                  onTap: () {
-                    riskProvider.assignRisk(widget.risk.id, auditor);
-                    Navigator.of(context).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Riesgo asignado a ${auditor.name}')),
+        return FutureBuilder(
+          future: riskProvider.ensureAuditorsLoaded(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const AlertDialog(
+                title: Text('Asignar a Auditor'),
+                content: SizedBox(
+                  height: 100,
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              );
+            }
+            
+            final auditors = riskProvider.auditors;
+            
+            return AlertDialog(
+              title: const Text('Asignar a Auditor'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: auditors.length,
+                  itemBuilder: (context, index) {
+                    final auditor = auditors[index];
+                    return ListTile(
+                      title: Text(auditor.name),
+                      onTap: () {
+                        riskProvider.assignRisk(widget.risk.id, auditor);
+                        Navigator.of(context).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Riesgo asignado a ${auditor.name}')),
+                        );
+                      },
                     );
                   },
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancelar'),
-            ),
-          ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancelar'),
+                ),
+              ],
+            );
+          },
         );
       },
     );

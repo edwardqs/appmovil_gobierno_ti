@@ -84,6 +84,12 @@ class AuthProvider extends ChangeNotifier {
 
   /// Inicia sesión con Biometría
   Future<void> loginWithBiometrics() async {
+    // Evitar múltiples intentos simultáneos
+    if (_status == AuthStatus.loading) {
+      print('⚠️ [AUTH_PROVIDER] Intento de login biométrico ya en progreso, ignorando...');
+      return;
+    }
+
     _status = AuthStatus.loading;
     _errorMessage = null;
     notifyListeners();
@@ -93,11 +99,28 @@ class AuthProvider extends ChangeNotifier {
       if (_user != null) {
         _status = AuthStatus.authenticated;
       } else {
+        // Si loginWithBiometrics retorna null, significa que la autenticación fue cancelada
         _status = AuthStatus.unauthenticated;
+        _errorMessage = "Autenticación biométrica cancelada";
       }
     } catch (e) {
       _status = AuthStatus.error;
-      _errorMessage = e.toString().replaceFirst("Exception: ", "");
+      String errorMessage = e.toString().replaceFirst("Exception: ", "");
+      
+      // Mejorar mensajes de error específicos para biometría
+      if (errorMessage.contains("BiometricAuthException")) {
+        errorMessage = errorMessage.replaceFirst("BiometricAuthException: ", "");
+      }
+      if (errorMessage.contains("CREDENTIALS_NOT_FOUND")) {
+        errorMessage = "Credenciales biométricas no encontradas. Inicia sesión manualmente.";
+      } else if (errorMessage.contains("SESSION_EXPIRED") || errorMessage.contains("CREDENTIALS_EXPIRED")) {
+        errorMessage = "Credenciales biométricas expiradas. Inicia sesión manualmente.";
+      } else if (errorMessage.contains("INVALID_SESSION")) {
+        errorMessage = "Sesión biométrica inválida. Inicia sesión manualmente.";
+      }
+      
+      _errorMessage = errorMessage;
+      print('❌ [AUTH_PROVIDER] Error en login biométrico: $errorMessage');
     }
     notifyListeners();
   }
