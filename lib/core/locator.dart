@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../data/services/auth_service.dart';
 import '../data/services/risk_service.dart';
 import '../data/services/biometric_service.dart';
+import '../data/services/device_service.dart';
 import '../presentation/providers/auth_provider.dart';
 import '../presentation/providers/risk_provider.dart';
 
@@ -14,7 +15,10 @@ void setupLocator() {
   // BiometricService (sin dependencias)
   locator.registerLazySingleton(() => BiometricService());
 
-  // ✅ AuthService con SupabaseClient inyectado
+  // ✅ DeviceService con SupabaseClient inyectado (debe estar antes de AuthService)
+  locator.registerLazySingleton(() => DeviceService(Supabase.instance.client));
+
+  // ✅ AuthService con SupabaseClient inyectado (depende de BiometricService y DeviceService)
   locator.registerLazySingleton(() => AuthService(Supabase.instance.client));
 
   // ✅ RiskService con SupabaseClient inyectado (opcional)

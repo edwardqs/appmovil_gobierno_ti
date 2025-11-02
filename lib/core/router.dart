@@ -9,6 +9,7 @@ import '../presentation/screens/auth/register_screen.dart';
 import '../presentation/screens/dashboard/dashboard_screen.dart';
 // ✅ RUTA CORREGIDA: Usar solo una ubicación
 import '../presentation/screens/biometric_setup_screen.dart';
+import '../presentation/screens/devices/devices_screen.dart';
 
 final GoRouter router = GoRouter(
   refreshListenable: locator<AuthProvider>(),
@@ -23,6 +24,10 @@ final GoRouter router = GoRouter(
     GoRoute(
       path: '/biometric-setup',
       builder: (context, state) => const BiometricSetupScreen(),
+    ),
+    GoRoute(
+      path: '/devices',
+      builder: (context, state) => const DevicesScreen(),
     ),
   ],
 

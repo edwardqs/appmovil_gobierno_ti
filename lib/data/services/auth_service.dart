@@ -7,6 +7,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:io';
 import '../models/user_model.dart';
 import 'biometric_service.dart';
+import 'device_service.dart';
 import '../../core/locator.dart';
 
 // ============================================================================
@@ -51,6 +52,7 @@ class AuthService {
   final SupabaseClient _supabase;
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
   late final BiometricService _biometricService;
+  late final DeviceService _deviceService;
 
   // Claves para almacenamiento
   static const String _keyRefreshToken = 'biometric_refresh_token';
@@ -61,6 +63,7 @@ class AuthService {
 
   AuthService(this._supabase) {
     _biometricService = locator<BiometricService>();
+    _deviceService = locator<DeviceService>();
   }
 
   // ==========================================================================
@@ -325,33 +328,42 @@ class AuthService {
 
       print('✅ [LOGIN_BIOMETRIC] Sesión refrescada exitosamente');
 
+      // ✅ NUEVO: Verificar en tabla user_devices en lugar de users
+      final isRegistered = await _deviceService.isDeviceRegistered(
+        response.user!.id,
+        deviceId,
+      );
+
+      if (!isRegistered) {
+        print('❌ [LOGIN_BIOMETRIC] Dispositivo no registrado o inactivo');
+        await _clearBiometricData();
+        throw BiometricAuthException(
+          'DEVICE_NOT_REGISTERED',
+          'Este dispositivo no está registrado. Inicia sesión manualmente.',
+        );
+      }
+
+      print('✅ [LOGIN_BIOMETRIC] Dispositivo verificado en user_devices');
+
+      // ✅ NUEVO: Actualizar last_used_at del dispositivo
+      await _deviceService.updateDeviceLastUsed(response.user!.id, deviceId);
+
+      await _renewBiometricCredentials(response.session!);
+
       final userData = await _supabase
           .from('users')
           .select()
           .eq('id', response.user!.id)
           .single();
 
-      final storedDeviceId = userData['device_id'] as String?;
-      if (storedDeviceId != null && storedDeviceId != deviceId) {
-        print('❌ [LOGIN_BIOMETRIC] Device ID no coincide');
-        await _clearBiometricData();
-        throw BiometricAuthException(
-          'DEVICE_MISMATCH',
-          'Este dispositivo no coincide con el registrado. Inicia sesión manualmente.',
-        );
-      }
-
-      print('✅ [LOGIN_BIOMETRIC] Device ID verificado correctamente');
-      await _renewBiometricCredentials(response.session!);
-
       final user = UserModel(
         id: response.user!.id,
         name: userData['name'],
         email: userData['email'],
         role: UserModel.roleFromString(userData['role']),
-        biometricEnabled: userData['biometric_enabled'] ?? false,
+        biometricEnabled: true, // ✅ El usuario tiene biometría en ESTE dispositivo
         biometricToken: userData['biometric_token'],
-        deviceId: userData['device_id'],
+        deviceId: deviceId, // ✅ Usar el deviceId actual
         dni: userData['dni'],
         phone: userData['phone'],
         address: userData['address'],
@@ -407,6 +419,7 @@ class AuthService {
       final deviceId = await _getDeviceId();
       print('📱 [BIOMETRIC] Device ID: $deviceId');
 
+      // ✅ Guardar credenciales localmente
       await _secureStorage.write(
         key: _keyRefreshToken,
         value: session.refreshToken,
@@ -417,17 +430,29 @@ class AuthService {
       );
       await _secureStorage.write(key: _keyUserEmail, value: user.email);
       await _secureStorage.write(key: _keyDeviceId, value: deviceId);
-      print('💾 [BIOMETRIC] Credenciales guardadas');
+      print('💾 [BIOMETRIC] Credenciales guardadas en almacenamiento seguro');
 
-      await _supabase
-          .from('users')
-          .update({
-            'biometric_enabled': true,
-            'device_id': deviceId,
-          })
-          .eq('id', user.id);
+      // ✅ NUEVO: Registrar dispositivo en user_devices
+      try {
+        await _deviceService.registerCurrentDevice(user.id);
+        print('✅ [BIOMETRIC] Dispositivo registrado en user_devices');
+      } catch (e) {
+        print('❌ [BIOMETRIC] Error al registrar dispositivo: $e');
+        // Limpiar credenciales si falla el registro
+        await _clearBiometricData();
+        return {
+          'success': false,
+          'message': 'Error al registrar dispositivo: ${e.toString()}',
+        };
+      }
 
-      print('✅ [BIOMETRIC] Estado actualizado en BD');
+      // ✅ MANTENER: Actualizar users.biometric_enabled para compatibilidad
+      // (Este campo se usará como flag general, no para validación de dispositivo)
+      await _supabase.from('users').update({
+        'biometric_enabled': true,
+      }).eq('id', user.id);
+
+      print('✅ [BIOMETRIC] Flag biometric_enabled actualizado en users');
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_keyBiometricEnabled, true);
@@ -446,28 +471,49 @@ class AuthService {
 
   Future<Map<String, dynamic>> disableBiometricForCurrentUser() async {
     try {
-      print('🔐 [BIOMETRIC] Deshabilitando biometría...');
+      print('🔐 [BIOMETRIC] Deshabilitando biometría en este dispositivo...');
 
       final user = _supabase.auth.currentUser;
       if (user == null) {
         return {'success': false, 'message': 'No hay sesión activa'};
       }
 
+      final deviceId = await _secureStorage.read(key: _keyDeviceId);
+
+      // ✅ Limpiar credenciales locales
       await _clearBiometricData();
 
-      await _supabase
-          .from('users')
-          .update({
-            'biometric_enabled': false,
-            'device_id': null,
-          })
-          .eq('id', user.id);
+      // ✅ NUEVO: Desactivar dispositivo en user_devices
+      if (deviceId != null) {
+        try {
+          await _deviceService.deactivateDevice(user.id, deviceId);
+          print('✅ [BIOMETRIC] Dispositivo desactivado en user_devices');
+        } catch (e) {
+          print('⚠️ [BIOMETRIC] No se pudo desactivar en user_devices: $e');
+        }
+      }
 
-      print('✅ [BIOMETRIC] Biometría deshabilitada exitosamente');
+      // ✅ Verificar si hay otros dispositivos activos
+      final activeDevices = await _deviceService.getActiveDevices(user.id);
+      final hasOtherDevices = activeDevices.isNotEmpty;
+
+      // ✅ Solo actualizar biometric_enabled a false si no hay otros dispositivos
+      if (!hasOtherDevices) {
+        await _supabase.from('users').update({
+          'biometric_enabled': false,
+        }).eq('id', user.id);
+        print('✅ [BIOMETRIC] Flag biometric_enabled actualizado en users');
+      } else {
+        print(
+          'ℹ️ [BIOMETRIC] Hay otros ${activeDevices.length} dispositivos activos, manteniendo flag',
+        );
+      }
+
+      print('✅ [BIOMETRIC] Biometría deshabilitada en este dispositivo');
 
       return {
         'success': true,
-        'message': 'Biometría deshabilitada exitosamente',
+        'message': 'Biometría deshabilitada en este dispositivo',
       };
     } catch (e) {
       print('❌ [BIOMETRIC] Error al deshabilitar biometría: $e');

@@ -121,6 +121,15 @@ class DashboardScreen extends StatelessWidget {
                 context.go('/biometric-setup');
               },
             ),
+            ListTile(
+              leading: const Icon(Icons.devices),
+              title: const Text('Mis Dispositivos'),
+              subtitle: const Text('Gestionar dispositivos registrados'),
+              onTap: () {
+                Navigator.pop(context);
+                context.go('/devices');
+              },
+            ),
             const Divider(),
             ListTile(
               leading: const Icon(Icons.logout),
