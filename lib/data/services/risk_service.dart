@@ -18,21 +18,29 @@ class RiskService {
   /// Sube una imagen a Supabase Storage y retorna la URL pública
   Future<String?> uploadImage(String imagePath, String riskId) async {
     try {
+      print('📸 [UPLOAD_IMAGE] Iniciando subida de imagen: $imagePath');
+      
       final file = File(imagePath);
       if (!await file.exists()) {
-        print('❌ Archivo no encontrado: $imagePath');
+        print('❌ [UPLOAD_IMAGE] Archivo no encontrado: $imagePath');
         return null;
       }
+
+      print('✅ [UPLOAD_IMAGE] Archivo existe, tamaño: ${await file.length()} bytes');
 
       // Generar nombre único para la imagen
       final fileName = '${riskId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final filePath = 'risk-images/$fileName';
+      
+      print('🔄 [UPLOAD_IMAGE] Nombre de archivo generado: $fileName');
+      print('🔄 [UPLOAD_IMAGE] Ruta en storage: $filePath');
 
       // Intentar subir archivo a Supabase Storage
       // Primero intentamos con 'images', luego con 'risk-attachments'
       String? publicUrl;
       
       try {
+        print('🔄 [UPLOAD_IMAGE] Intentando subir a bucket "images"...');
         await _supabase.storage
             .from('images')
             .upload(filePath, file);
@@ -40,8 +48,11 @@ class RiskService {
         publicUrl = _supabase.storage
             .from('images')
             .getPublicUrl(filePath);
+        
+        print('✅ [UPLOAD_IMAGE] Subida exitosa a bucket "images"');
       } catch (e) {
-        print('⚠️ Bucket "images" no disponible, intentando con "risk-attachments": $e');
+        print('⚠️ [UPLOAD_IMAGE] Bucket "images" no disponible: $e');
+        print('🔄 [UPLOAD_IMAGE] Intentando con bucket "risk-attachments"...');
         
         try {
           await _supabase.storage
@@ -51,20 +62,34 @@ class RiskService {
           publicUrl = _supabase.storage
               .from('risk-attachments')
               .getPublicUrl(filePath);
+          
+          print('✅ [UPLOAD_IMAGE] Subida exitosa a bucket "risk-attachments"');
         } catch (e2) {
-          print('❌ Error con ambos buckets. Necesitas crear un bucket en Supabase Storage');
+          print('❌ [UPLOAD_IMAGE] Error con ambos buckets:');
+          print('   - Error bucket "images": $e');
+          print('   - Error bucket "risk-attachments": $e2');
+          print('   Necesitas crear un bucket en Supabase Storage');
           print('   Bucket sugerido: "images" o "risk-attachments"');
           return null;
         }
       }
 
-      // Registrar en auditoría
-      await _auditService.logImageUpload(riskId, publicUrl!);
+      print('🔄 [UPLOAD_IMAGE] URL pública generada: $publicUrl');
 
-      print('✅ Imagen subida exitosamente: $publicUrl');
+      // Registrar en auditoría
+      try {
+        await _auditService.logImageUpload(riskId, publicUrl!);
+        print('✅ [UPLOAD_IMAGE] Auditoría registrada');
+      } catch (e) {
+        print('⚠️ [UPLOAD_IMAGE] Error al registrar auditoría: $e');
+        // Continuar aunque falle la auditoría
+      }
+
+      print('✅ [UPLOAD_IMAGE] Imagen subida exitosamente: $publicUrl');
       return publicUrl;
     } catch (e) {
-      print('❌ Error general al subir imagen: $e');
+      print('❌ [UPLOAD_IMAGE] Error general al subir imagen: $e');
+      print('❌ [UPLOAD_IMAGE] Tipo de error: ${e.runtimeType}');
       return null;
     }
   }
@@ -133,19 +158,37 @@ class RiskService {
   /// Agrega un nuevo riesgo a Supabase
   Future<Risk> addRisk(Risk newRisk) async {
     try {
+      print('🔄 [ADD_RISK] Iniciando creación de riesgo...');
+      print('🔄 [ADD_RISK] Título: ${newRisk.title}');
+      print('🔄 [ADD_RISK] Asset: ${newRisk.asset}');
+      print('🔄 [ADD_RISK] Imágenes a subir: ${newRisk.imagePaths.length}');
+      
       final currentUser = _supabase.auth.currentUser;
       if (currentUser == null) {
+        print('❌ [ADD_RISK] Usuario no autenticado');
         throw Exception('Usuario no autenticado');
       }
+      
+      print('✅ [ADD_RISK] Usuario autenticado: ${currentUser.email}');
 
       // Generar ID único para el riesgo
       final riskId = generateNewId();
+      print('🔄 [ADD_RISK] ID generado: $riskId');
 
       // Subir imágenes si existen
       List<String> imageUrls = [];
       if (newRisk.imagePaths.isNotEmpty) {
-        print('📸 Subiendo ${newRisk.imagePaths.length} imágenes...');
-        imageUrls = await uploadImages(newRisk.imagePaths, riskId);
+        print('📸 [ADD_RISK] Subiendo ${newRisk.imagePaths.length} imágenes...');
+        try {
+          imageUrls = await uploadImages(newRisk.imagePaths, riskId);
+          print('✅ [ADD_RISK] Imágenes subidas exitosamente: ${imageUrls.length}');
+        } catch (e) {
+          print('❌ [ADD_RISK] Error al subir imágenes: $e');
+          // Continuar sin imágenes si falla la subida
+          imageUrls = [];
+        }
+      } else {
+        print('ℹ️ [ADD_RISK] No hay imágenes para subir');
       }
 
       final riskData = {
@@ -163,16 +206,31 @@ class RiskService {
         'created_by': currentUser.id,
       };
 
+      print('🔄 [ADD_RISK] Datos a insertar: $riskData');
+      print('🔄 [ADD_RISK] Insertando en Supabase...');
+
       final response = await _supabase
           .from('risks')
           .insert(riskData)
           .select()
           .single();
 
-      print('✅ Riesgo creado exitosamente: ${response['id']} con ${imageUrls.length} imágenes');
-      return Risk.fromJson(response);
+      print('✅ [ADD_RISK] Riesgo creado exitosamente: ${response['id']} con ${imageUrls.length} imágenes');
+      print('✅ [ADD_RISK] Respuesta completa: $response');
+      
+      final createdRisk = Risk.fromJson(response);
+      print('✅ [ADD_RISK] Riesgo parseado correctamente');
+      
+      return createdRisk;
     } catch (e) {
-      print('❌ Error al crear riesgo: $e');
+      print('❌ [ADD_RISK] Error al crear riesgo: $e');
+      print('❌ [ADD_RISK] Tipo de error: ${e.runtimeType}');
+      if (e.toString().contains('duplicate key')) {
+        print('❌ [ADD_RISK] Error de clave duplicada detectado');
+      }
+      if (e.toString().contains('permission')) {
+        print('❌ [ADD_RISK] Error de permisos detectado');
+      }
       throw Exception('Error al crear el riesgo: $e');
     }
   }

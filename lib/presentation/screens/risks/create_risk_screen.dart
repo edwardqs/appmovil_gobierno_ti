@@ -106,20 +106,73 @@ class _CreateRiskScreenState extends State<CreateRiskScreen> {
     });
   }
 
-  void _submitForm() {
+  Future<void> _submitForm() async {
     if (_formKey.currentState!.validate()) {
-      // Lógica para guardar el riesgo
-      final riskProvider = Provider.of<RiskProvider>(context, listen: false);
-      riskProvider.addRisk(
-        _titleController.text,
-        _assetController.text,
-        _probability.toInt(),
-        _impact.toInt(),
-        _controlEffectiveness,
-        _commentController.text.isNotEmpty ? _commentController.text : null,
-        _images.map((file) => file.path).toList(),
-      );
-      Navigator.pop(context);
+      try {
+        print('🔄 [CREATE_RISK_SCREEN] Iniciando envío del formulario...');
+        
+        // Mostrar indicador de carga
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) {
+            return const AlertDialog(
+              content: Row(
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(width: 20),
+                  Text('Guardando riesgo...'),
+                ],
+              ),
+            );
+          },
+        );
+
+        final riskProvider = Provider.of<RiskProvider>(context, listen: false);
+        
+        print('🔄 [CREATE_RISK_SCREEN] Llamando a riskProvider.addRisk...');
+        
+        await riskProvider.addRisk(
+          _titleController.text,
+          _assetController.text,
+          _probability.toInt(),
+          _impact.toInt(),
+          _controlEffectiveness,
+          _commentController.text.isNotEmpty ? _commentController.text : null,
+          _images.map((file) => file.path).toList(),
+        );
+        
+        print('✅ [CREATE_RISK_SCREEN] Riesgo creado exitosamente');
+        
+        // Cerrar el diálogo de carga
+        if (mounted) Navigator.of(context).pop();
+        
+        // Mostrar mensaje de éxito
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Riesgo creado exitosamente'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context);
+        }
+      } catch (e) {
+        print('❌ [CREATE_RISK_SCREEN] Error al crear riesgo: $e');
+        
+        // Cerrar el diálogo de carga si está abierto
+        if (mounted) Navigator.of(context).pop();
+        
+        // Mostrar mensaje de error
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error al crear el riesgo: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
     }
   }
 

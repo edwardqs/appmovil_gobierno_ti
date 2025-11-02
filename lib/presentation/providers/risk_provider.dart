@@ -76,15 +76,37 @@ class RiskProvider with ChangeNotifier {
   Future<void> addRisk(
       String title, String asset, int probability, int impact,
       double controlEffectiveness, String? comment, List<String> imagePaths) async {
-    final newRisk = Risk(
-      id: _riskService.generateNewId(),
-      title: title, asset: asset, status: RiskStatus.open,
-      probability: probability, impact: impact,
-      controlEffectiveness: controlEffectiveness,
-      comment: comment, imagePaths: imagePaths,
-    );
-    await _riskService.addRisk(newRisk);
-    await fetchRisks();
+    try {
+      print('🔄 [RISK_PROVIDER] Iniciando creación de riesgo...');
+      print('🔄 [RISK_PROVIDER] Título: $title');
+      print('🔄 [RISK_PROVIDER] Asset: $asset');
+      print('🔄 [RISK_PROVIDER] Imágenes: ${imagePaths.length}');
+      
+      final newRisk = Risk(
+        id: _riskService.generateNewId(),
+        title: title, asset: asset, status: RiskStatus.open,
+        probability: probability, impact: impact,
+        controlEffectiveness: controlEffectiveness,
+        comment: comment, imagePaths: imagePaths,
+      );
+      
+      print('🔄 [RISK_PROVIDER] Riesgo creado localmente con ID: ${newRisk.id}');
+      print('🔄 [RISK_PROVIDER] Llamando a RiskService.addRisk...');
+      
+      await _riskService.addRisk(newRisk);
+      
+      print('✅ [RISK_PROVIDER] Riesgo guardado en Supabase exitosamente');
+      print('🔄 [RISK_PROVIDER] Actualizando lista de riesgos...');
+      
+      await fetchRisks();
+      
+      print('✅ [RISK_PROVIDER] Lista de riesgos actualizada');
+    } catch (e) {
+      print('❌ [RISK_PROVIDER] Error al crear riesgo: $e');
+      print('❌ [RISK_PROVIDER] Tipo de error: ${e.runtimeType}');
+      print('❌ [RISK_PROVIDER] Stack trace: ${StackTrace.current}');
+      rethrow; // Re-lanzar el error para que la UI pueda manejarlo
+    }
   }
 
   // ▼▼▼ MÉTODO PARA GUARDAR Y NOTIFICAR EL ANÁLISIS DE LA IA ▼▼▼
