@@ -1,12 +1,18 @@
 import 'package:app_gobiernoti/core/locator.dart';
 import 'package:app_gobiernoti/core/router.dart';
+import 'package:app_gobiernoti/core/supabase_config.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'core/theme/app_theme.dart';
 import 'presentation/providers/auth_provider.dart';
 import 'presentation/providers/risk_provider.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Inicializar Supabase
+  await SupabaseConfig.initialize();
+  
   setupLocator();
   runApp(const GRCApp());
 }

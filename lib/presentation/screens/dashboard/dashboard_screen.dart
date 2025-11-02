@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/models/user_model.dart';
 import '../../providers/auth_provider.dart';
@@ -12,20 +13,40 @@ class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
   // Widget que decide qué dashboard mostrar
-  Widget _buildDashboardByRole(UserRole role) {
+  Widget _buildDashboardByRole(UserRole? role) {
+    if (role == null) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.pending_outlined, size: 64, color: Colors.grey),
+            SizedBox(height: 16),
+            Text(
+              'Esperando asignación de rol',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Un gerente debe asignar tu rol para acceder al dashboard',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
+      );
+    }
+
     switch (role) {
       case UserRole.gerenteAuditoria:
-      case UserRole.socioAuditoria:
         return const ManagerDashboardView();
 
       case UserRole.auditorJunior:
       case UserRole.auditorSenior:
-      case UserRole.especialistaTI:
         return const AuditorDashboardView();
 
       default:
       // Un dashboard por defecto si el rol es desconocido
-        return const Center(child: Text('Rol no reconocido.'));
+        return const Center(child: Text('Rol no reconocido'));
     }
   }
 
@@ -80,6 +101,33 @@ class DashboardScreen extends StatelessWidget {
                 ));
               },
             ),
+            ListTile(
+              leading: const Icon(Icons.fingerprint),
+              title: const Text('Configuración Biométrica'),
+              subtitle: const Text('Habilitar/deshabilitar biometría'),
+              onTap: () {
+                Navigator.pop(context);
+                context.go('/biometric-setup');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.wifi_outlined),
+              title: const Text('Prueba de Conexión'),
+              subtitle: const Text('Verificar Supabase'),
+              onTap: () {
+                Navigator.pop(context);
+                context.go('/connection-test');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.science_outlined),
+              title: const Text('Pruebas Supabase'),
+              subtitle: const Text('Probar tablas y funciones'),
+              onTap: () {
+                Navigator.pop(context);
+                context.go('/supabase-test');
+              },
+            ),
             const Divider(),
             ListTile(
               leading: const Icon(Icons.logout),
@@ -92,7 +140,8 @@ class DashboardScreen extends StatelessWidget {
       body: _buildDashboardByRole(user.role), // <-- Llama al distribuidor
 
       // Mostrar el botón de "Nuevo Riesgo" solo a los roles que pueden registrar
-      floatingActionButton: (user.role == UserRole.auditorJunior || user.role == UserRole.auditorSenior)
+      floatingActionButton: (user.role != null && 
+          (user.role == UserRole.auditorJunior || user.role == UserRole.auditorSenior))
           ? FloatingActionButton.extended(
         onPressed: () {
           Navigator.of(context).push(MaterialPageRoute(

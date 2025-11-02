@@ -1,12 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:app_gobiernoti/data/services/biometric_service.dart';
+import 'package:app_gobiernoti/data/services/auth_service.dart';
 import 'package:app_gobiernoti/presentation/screens/auth/register_screen.dart';
+
 import '../../../core/theme/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/animations/fade_in_animation.dart';
-import 'package:local_auth/local_auth.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -19,40 +19,62 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  final BiometricService _biometricService = BiometricService();
+  final AuthService _authService = AuthService();
 
-  Future<void> _loginWithBiometrics() async {
-    final List<BiometricType> availableBiometrics =
-    await _biometricService.getAvailableBiometrics();
 
-    if (kDebugMode) {
-      print("Biométricos disponibles: $availableBiometrics");
-    }
-
-    if (availableBiometrics.isEmpty && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se encontró un sensor biométrico compatible.')),
-      );
+  Future<void> _loginWithBiometrics(AuthProvider authProvider) async {
+    print('🔐 Iniciando login biométrico...');
+    
+    final hasBiometricData = authProvider.hasBiometricDataValue;
+    print('🔐 ¿Tiene datos biométricos? $hasBiometricData');
+    
+    if (!hasBiometricData) {
+      print('🔐 No hay datos biométricos configurados');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No tienes configurada la autenticación biométrica'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
       return;
     }
 
-    String reason = 'Usa tu biometría para iniciar sesión';
-    if (availableBiometrics.contains(BiometricType.face)) {
-      reason = 'Usa tu rostro para iniciar sesión';
-    } else if (availableBiometrics.contains(BiometricType.fingerprint)) {
-      reason = 'Usa tu huella para iniciar sesión';
-    }
-
+    print('🔐 Intentando autenticación biométrica...');
     try {
-      final isAuthenticated = await _biometricService.authenticate(reason);
+      final user = await _authService.loginWithBiometrics();
+      print('🔐 Resultado de autenticación: ${user != null ? "Exitoso" : "Falló"}');
 
-      if (isAuthenticated && mounted) {
-        Provider.of<AuthProvider>(context, listen: false)
-            .login('biometric@user.com', 'password');
+      if (user != null && mounted) {
+        // Actualizar el provider con el usuario autenticado
+        authProvider.setCurrentUser(user);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Inicio de sesión biométrico exitoso'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error en la autenticación biométrica'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     } catch (e) {
       if (kDebugMode) {
-        print("Error durante la autenticación: $e");
+        print("Error durante la autenticación biométrica: $e");
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error inesperado: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -174,14 +196,25 @@ class _LoginScreenState extends State<LoginScreen> {
                             }),
                       ),
                       const SizedBox(width: 16),
-                      // ▼▼▼ ÍCONO CAMBIADO AQUÍ ▼▼▼
-                      IconButton(
-                        onPressed: _loginWithBiometrics,
-                        icon: const Icon(Icons.fingerprint, size: 30),
-                        color: AppColors.primary,
-                        tooltip: 'Iniciar con biometría',
+                      Consumer<AuthProvider>(
+                        builder: (context, authProvider, child) {
+                          return IconButton(
+                            onPressed: authProvider.hasBiometricDataValue
+                                ? () => _loginWithBiometrics(authProvider)
+                                : null,
+                            icon: Icon(
+                              Icons.fingerprint,
+                              size: 30,
+                              color: authProvider.hasBiometricDataValue
+                                  ? AppColors.primary
+                                  : Colors.grey,
+                            ),
+                            tooltip: authProvider.hasBiometricDataValue
+                                ? 'Iniciar con biometría'
+                                : 'Biometría no configurada',
+                          );
+                        },
                       ),
-                      // ▲▲▲ FIN DEL CAMBIO ▲▲▲
                     ],
                   ),
                 ),
@@ -194,8 +227,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         builder: (_) => const RegisterScreen(),
                       ));
                     },
-                    child:
-                    const Text('¿No tienes una cuenta? Regístrate aquí'),
+                    child: const Text('¿No tienes cuenta? Regístrate aquí'),
                   ),
                 ),
               ],

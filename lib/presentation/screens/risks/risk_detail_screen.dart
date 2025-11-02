@@ -447,11 +447,11 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
     final currentRisk = riskProvider.risks.firstWhere((r) => r.id == widget.risk.id, orElse: () => widget.risk);
 
     // Definición de roles
-    final isManager = currentUser?.role == UserRole.gerenteAuditoria || currentUser?.role == UserRole.socioAuditoria;
+    final isManager = currentUser?.role == UserRole.gerenteAuditoria;
     final isSeniorAuditor = currentUser?.role == UserRole.auditorSenior;
     final isAssignedAuditor = currentUser?.id == currentRisk.assignedUserId;
 
-    // Condición para mostrar el botón de PDF (Auditor Senior O Gerente/Socio)
+    // Condición para mostrar el botón de PDF (Auditor Senior O Gerente de Auditoría)
     final canGeneratePdf = isManager || isSeniorAuditor;
 
     // Condición para mostrar el botón de Análisis (Solo Auditor Asignado Y si no se ha generado)
