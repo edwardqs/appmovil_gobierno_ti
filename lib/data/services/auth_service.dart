@@ -154,10 +154,20 @@ class AuthService {
   Future<void> logout() async {
     try {
       print('🔐 [LOGOUT] Cerrando sesión...');
+
+      // ✅ Limpiar datos biométricos locales
+      await _clearBiometricData();
+
+      // ✅ Cerrar sesión en Supabase
       await _supabase.auth.signOut();
-      print('✅ [LOGOUT] Sesión cerrada exitosamente');
+
+      print('✅ [LOGOUT] Sesión cerrada y datos locales limpiados');
     } catch (e) {
       print('❌ [LOGOUT] Error al cerrar sesión: $e');
+      // Aunque falle, intentar limpiar datos locales
+      try {
+        await _clearBiometricData();
+      } catch (_) {}
       throw AuthServiceException('LOGOUT_ERROR', 'Error al cerrar sesión');
     }
   }
@@ -526,17 +536,30 @@ class AuthService {
 
   Future<bool> checkBiometricStatus() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final isEnabled = prefs.getBool(_keyBiometricEnabled) ?? false;
+      print('🔍 [BIOMETRIC] Verificando estado biométrico...');
 
-      if (isEnabled) {
-        final refreshToken = await _secureStorage.read(key: _keyRefreshToken);
-        return refreshToken != null;
+      // ✅ CORREGIDO: Verificar directamente si hay credenciales guardadas
+      // No depender solo del flag de SharedPreferences
+      final refreshToken = await _secureStorage.read(key: _keyRefreshToken);
+      final deviceId = await _secureStorage.read(key: _keyDeviceId);
+      final userEmail = await _secureStorage.read(key: _keyUserEmail);
+
+      final hasCredentials = refreshToken != null &&
+                            deviceId != null &&
+                            userEmail != null;
+
+      print('🔍 [BIOMETRIC] Credenciales encontradas: $hasCredentials');
+      print('🔍 [BIOMETRIC] Email: $userEmail');
+
+      if (hasCredentials) {
+        // Actualizar flag en SharedPreferences si existe
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool(_keyBiometricEnabled, true);
       }
 
-      return false;
+      return hasCredentials;
     } catch (e) {
-      print('❌ Error al verificar estado biométrico: $e');
+      print('❌ [BIOMETRIC] Error al verificar estado biométrico: $e');
       return false;
     }
   }
