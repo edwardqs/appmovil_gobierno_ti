@@ -9,6 +9,7 @@ import '../../../data/models/risk_model.dart';
 import '../../../data/models/user_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/risk_provider.dart';
+import '../../widgets/common/risk_image_widget.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
@@ -79,7 +80,20 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
     // 2.1. Añadir imágenes
     for (final path in risk.imagePaths) {
       try {
-        final bytes = await File(path).readAsBytes();
+        List<int> bytes;
+        if (path.startsWith('http://') || path.startsWith('https://')) {
+          // Es una URL de Supabase Storage
+          final response = await http.get(Uri.parse(path));
+          if (response.statusCode == 200) {
+            bytes = response.bodyBytes;
+          } else {
+            continue; // Saltar esta imagen si no se puede descargar
+          }
+        } else {
+          // Es una ruta local de archivo
+          bytes = await File(path).readAsBytes();
+        }
+        
         final base64Image = base64Encode(bytes);
         final mimeType = path.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
 
@@ -155,7 +169,10 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
                 panEnabled: true,
                 minScale: 1.0,
                 maxScale: 4.0,
-                child: Image.file(File(imagePath)),
+                child: RiskImageWidget(
+                  imagePath: imagePath,
+                  fit: BoxFit.contain,
+                ),
               ),
               IconButton(
                 icon: const CircleAvatar(
@@ -280,9 +297,20 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
     final pwImages = <pw.ImageProvider>[];
     for (final path in risk.imagePaths) {
       try {
-        final bytes = await File(path).readAsBytes();
-        pwImages.add(pw.MemoryImage(bytes));
-      } catch (_) {}
+        if (path.startsWith('http://') || path.startsWith('https://')) {
+          // Es una URL de Supabase Storage
+          final response = await http.get(Uri.parse(path));
+          if (response.statusCode == 200) {
+            pwImages.add(pw.MemoryImage(response.bodyBytes));
+          }
+        } else {
+          // Es una ruta local de archivo
+          final bytes = await File(path).readAsBytes();
+          pwImages.add(pw.MemoryImage(bytes));
+        }
+      } catch (e) {
+        debugPrint('Error al cargar imagen para PDF: $e');
+      }
     }
 
     pw.Widget rowKV(String k, String v) => pw.Container(
@@ -521,7 +549,13 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
                       children: currentRisk.imagePaths.map((path) {
                         return GestureDetector(
                           onTap: () => _showImageDialog(context, path),
-                          child: ClipRRect(borderRadius: BorderRadius.circular(8.0), child: Image.file(File(path), width: 80, height: 80, fit: BoxFit.cover)),
+                          child: RiskImageWidget(
+                            imagePath: path,
+                            width: 80,
+                            height: 80,
+                            fit: BoxFit.cover,
+                            borderRadius: BorderRadius.circular(8.0),
+                          ),
                         );
                       }).toList(),
                     ),
