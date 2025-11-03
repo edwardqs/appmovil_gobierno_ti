@@ -289,6 +289,182 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
     );
   }
 
+  // ▼▼▼ NUEVO MÉTODO: DIÁLOGO PARA CONSULTAS DEL AUDITOR SENIOR ▼▼▼
+  void _showSeniorAuditorQueryDialog(BuildContext context) {
+    final riskProvider = Provider.of<RiskProvider>(context, listen: false);
+    final queryController = TextEditingController();
+    String selectedQueryType = 'technical'; // Tipo por defecto
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Row(
+                children: [
+                  Icon(Icons.question_answer, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  const Text('Consulta del Auditor Senior'),
+                ],
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Tipo de Consulta:',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: selectedQueryType,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'technical', child: Text('Consulta Técnica')),
+                        DropdownMenuItem(value: 'compliance', child: Text('Consulta de Cumplimiento')),
+                        DropdownMenuItem(value: 'risk_assessment', child: Text('Evaluación de Riesgo')),
+                        DropdownMenuItem(value: 'control_effectiveness', child: Text('Efectividad de Controles')),
+                        DropdownMenuItem(value: 'general', child: Text('Consulta General')),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          selectedQueryType = value!;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Detalle de la Consulta:',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: queryController,
+                      autofocus: true,
+                      maxLines: 4,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        hintText: 'Describe tu consulta específica sobre este riesgo...',
+                        contentPadding: EdgeInsets.all(12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    if (queryController.text.isNotEmpty) {
+                      try {
+                        await riskProvider.addRiskComment(
+                          widget.risk.id,
+                          queryController.text,
+                          type: selectedQueryType,
+                        );
+                        Navigator.of(context).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Consulta registrada exitosamente.')),
+                        );
+                        // Refrescar la vista para mostrar el nuevo comentario
+                        setState(() {});
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error al registrar consulta: $e')),
+                        );
+                      }
+                    }
+                  },
+                  child: const Text('Registrar Consulta'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ▼▼▼ NUEVO MÉTODO: CONSTRUIR TARJETA DE COMENTARIO ▼▼▼
+  Widget _buildCommentCard(Map<String, dynamic> comment) {
+    final createdAt = DateTime.parse(comment['created_at']);
+    final userName = comment['users']?['name'] ?? 'Usuario desconocido';
+    final commentType = comment['comment_type'] ?? 'general';
+    
+    // Mapear tipos de comentario a etiquetas legibles
+    final typeLabels = {
+      'technical': 'Técnica',
+      'compliance': 'Cumplimiento',
+      'risk_assessment': 'Evaluación de Riesgo',
+      'control_effectiveness': 'Efectividad de Controles',
+      'general': 'General',
+    };
+    
+    final typeColors = {
+      'technical': Colors.blue,
+      'compliance': Colors.orange,
+      'risk_assessment': Colors.red,
+      'control_effectiveness': Colors.green,
+      'general': Colors.grey,
+    };
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: typeColors[commentType]?.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: typeColors[commentType] ?? Colors.grey),
+                  ),
+                  child: Text(
+                    typeLabels[commentType] ?? 'General',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: typeColors[commentType],
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '${createdAt.day}/${createdAt.month}/${createdAt.year} ${createdAt.hour}:${createdAt.minute.toString().padLeft(2, '0')}',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              comment['comment'],
+              style: const TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Por: $userName',
+              style: const TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ▼▼▼ FUNCIÓN DE PDF MODIFICADA PARA USAR EL CAMPO PERSISTIDO ▼▼▼
   Future<void> _generateRiskPdf(Risk risk) async {
     final doc = pw.Document();
@@ -721,6 +897,75 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
                       color: Colors.redAccent,
                       onPressed: () {
                         _showReturnWithCommentDialog(context);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+
+          // ▼▼▼ NUEVA SECCIÓN: CONSULTAS DEL AUDITOR SENIOR ▼▼▼
+          if (isSeniorAuditor) ...[
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.question_answer, color: Colors.blue),
+                        const SizedBox(width: 8),
+                        Text('Consultas del Auditor Senior', style: Theme.of(context).textTheme.titleLarge),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _buildActionButton(
+                      context,
+                      title: 'Hacer Consulta Específica',
+                      icon: Icons.add_comment,
+                      color: Colors.blue,
+                      onPressed: () {
+                        _showSeniorAuditorQueryDialog(context);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    // Mostrar comentarios existentes
+                    FutureBuilder<List<Map<String, dynamic>>>(
+                      future: riskProvider.getRiskComments(currentRisk.id),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator());
+                        }
+                        
+                        if (snapshot.hasError) {
+                          return Text('Error al cargar comentarios: ${snapshot.error}');
+                        }
+                        
+                        final comments = snapshot.data ?? [];
+                        
+                        if (comments.isEmpty) {
+                          return const Text(
+                            'No hay consultas registradas para este riesgo.',
+                            style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
+                          );
+                        }
+                        
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Historial de Consultas:',
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            ...comments.map((comment) => _buildCommentCard(comment)).toList(),
+                          ],
+                        );
                       },
                     ),
                   ],

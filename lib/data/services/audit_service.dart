@@ -195,27 +195,29 @@ class AuditService {
   }
 
   // ▼▼▼ NUEVA FUNCIÓN AÑADIDA ▼▼▼
-  /// Obtiene todos los usuarios con el rol 'auditor_senior'
+  /// Obtiene todos los usuarios con el rol 'auditor_senior' con sus estadísticas
   Future<List<UserModel>> getAvailableAuditors() async {
     try {
-      print('🔄 [AuditService] Obteniendo auditores senior disponibles...');
+      print('🔄 [AuditService] Obteniendo auditores senior con estadísticas...');
 
       final response = await _supabase
-          .from('users') // O 'profiles' si tu tabla pública se llama así
-          .select()
+          .from('user_stats') // Usamos la vista user_stats que incluye estadísticas
+          .select('id, name, email, role, total_risks_assigned, open_risks, in_progress_risks, pending_review_risks, closed_risks')
           .eq('role', 'auditor_senior'); // Filtramos por el rol
 
-      // Mapeamos la respuesta a una lista de UserModel
-      // Usamos el factory `fromMap` que acabamos de añadir a UserModel
+      print('🔍 [AuditService] Respuesta de user_stats: $response');
+
+      // Mapeamos la respuesta a una lista de UserModel con estadísticas
       final auditors = (response as List)
-          .map((data) => UserModel.fromMap(data as Map<String, dynamic>))
+          .map((data) => UserModel.fromMapWithStats(data as Map<String, dynamic>))
           .toList();
 
-      print('✅ [AuditService] ${auditors.length} auditores senior encontrados.');
+      print('✅ [AuditService] ${auditors.length} auditores senior encontrados con estadísticas.');
       return auditors;
 
     } catch (e) {
       print('❌ [AuditService] Error al obtener auditores disponibles: $e');
+      print('❌ [AuditService] Detalles del error: ${e.toString()}');
       throw Exception('Error al obtener auditores disponibles: $e');
     }
   }

@@ -136,4 +136,26 @@ class RiskProvider with ChangeNotifier {
       print(e);
     }
   }
+
+  // ▼▼▼ NUEVOS MÉTODOS PARA COMENTARIOS ▼▼▼
+  /// Agrega un comentario a un riesgo
+  Future<void> addRiskComment(String riskId, String comment, {String type = 'general'}) async {
+    try {
+      await _riskService.addRiskComment(riskId, comment, type: type);
+      // No necesitamos notificar listeners aquí ya que los comentarios se cargan dinámicamente
+    } catch (e) {
+      print('Error adding risk comment: $e');
+      rethrow; // Re-lanzar el error para que la UI pueda manejarlo
+    }
+  }
+
+  /// Obtiene los comentarios de un riesgo
+  Future<List<Map<String, dynamic>>> getRiskComments(String riskId) async {
+    try {
+      return await _riskService.getRiskComments(riskId);
+    } catch (e) {
+      print('Error getting risk comments: $e');
+      return []; // Retornar lista vacía en caso de error
+    }
+  }
 }

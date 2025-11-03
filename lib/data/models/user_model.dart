@@ -18,6 +18,14 @@ class UserModel {
   final String? dni;
   final String? phone;
   final String? address;
+  
+  // ▼▼▼ NUEVAS PROPIEDADES PARA ESTADÍSTICAS DE RIESGOS ▼▼▼
+  final int? totalRisksAssigned;
+  final int? openRisks;
+  final int? inProgressRisks;
+  final int? pendingReviewRisks;
+  final int? closedRisks;
+  // ▲▲▲ FIN DE NUEVAS PROPIEDADES ▲▲▲
 
   UserModel({
     required this.id,
@@ -30,6 +38,13 @@ class UserModel {
     this.dni,
     this.phone,
     this.address,
+    // ▼▼▼ NUEVOS PARÁMETROS OPCIONALES ▼▼▼
+    this.totalRisksAssigned,
+    this.openRisks,
+    this.inProgressRisks,
+    this.pendingReviewRisks,
+    this.closedRisks,
+    // ▲▲▲ FIN DE NUEVOS PARÁMETROS ▲▲▲
   });
 
   // ▼▼▼ MÉTODO AÑADIDO (ESTA ES LA CORRECCIÓN PRINCIPAL) ▼▼▼
@@ -44,6 +59,13 @@ class UserModel {
     String? dni,
     String? phone,
     String? address,
+    // ▼▼▼ NUEVOS PARÁMETROS PARA ESTADÍSTICAS ▼▼▼
+    int? totalRisksAssigned,
+    int? openRisks,
+    int? inProgressRisks,
+    int? pendingReviewRisks,
+    int? closedRisks,
+    // ▲▲▲ FIN DE NUEVOS PARÁMETROS ▲▲▲
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -56,6 +78,13 @@ class UserModel {
       dni: dni ?? this.dni,
       phone: phone ?? this.phone,
       address: address ?? this.address,
+      // ▼▼▼ NUEVAS ASIGNACIONES ▼▼▼
+      totalRisksAssigned: totalRisksAssigned ?? this.totalRisksAssigned,
+      openRisks: openRisks ?? this.openRisks,
+      inProgressRisks: inProgressRisks ?? this.inProgressRisks,
+      pendingReviewRisks: pendingReviewRisks ?? this.pendingReviewRisks,
+      closedRisks: closedRisks ?? this.closedRisks,
+      // ▲▲▲ FIN DE NUEVAS ASIGNACIONES ▲▲▲
     );
   }
   // ▲▲▲ FIN DEL MÉTODO AÑADIDO ▲▲▲
@@ -74,6 +103,29 @@ class UserModel {
       dni: map['dni'],
       phone: map['phone'],
       address: map['address'],
+    );
+  }
+
+  /// Crea un UserModel desde un mapa con estadísticas (respuesta de user_stats)
+  factory UserModel.fromMapWithStats(Map<String, dynamic> map) {
+    return UserModel(
+      id: map['id'] ?? '',
+      name: map['name'] ?? 'Sin nombre',
+      email: map['email'] ?? 'Sin email',
+      role: roleFromString(map['role']),
+      biometricEnabled: map['biometric_enabled'] ?? false,
+      biometricToken: map['biometric_token'],
+      deviceId: map['device_id'],
+      dni: map['dni'],
+      phone: map['phone'],
+      address: map['address'],
+      // ▼▼▼ ESTADÍSTICAS DE RIESGOS ▼▼▼
+      totalRisksAssigned: map['total_risks_assigned'] ?? 0,
+      openRisks: map['open_risks'] ?? 0,
+      inProgressRisks: map['in_progress_risks'] ?? 0,
+      pendingReviewRisks: map['pending_review_risks'] ?? 0,
+      closedRisks: map['closed_risks'] ?? 0,
+      // ▲▲▲ FIN DE ESTADÍSTICAS ▲▲▲
     );
   }
   // ▲▲▲ FIN DEL CONSTRUCTOR DE FÁBRICA ▲▲▲
