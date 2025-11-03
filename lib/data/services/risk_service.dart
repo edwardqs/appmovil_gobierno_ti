@@ -309,7 +309,7 @@ class RiskService {
         'id': riskId,
         'title': newRisk.title,
         'asset': newRisk.asset,
-        'status': newRisk.status.name,
+        'status': Risk.statusToString(newRisk.status), // ← CAMBIO: usar snake_case
         'probability': newRisk.probability,
         'impact': newRisk.impact,
         'control_effectiveness': newRisk.controlEffectiveness,
@@ -356,7 +356,7 @@ class RiskService {
       );
 
       final updateData = <String, dynamic>{
-        'status': newStatus.name,
+        'status': Risk.statusToString(newStatus), // ← CAMBIO: usar snake_case
         'updated_at': DateTime.now().toIso8601String(),
       };
 
@@ -384,7 +384,7 @@ class RiskService {
       final updateData = {
         'title': risk.title,
         'asset': risk.asset,
-        'status': risk.status.name,
+        'status': Risk.statusToString(risk.status), // ← CAMBIO: usar snake_case
         'probability': risk.probability,
         'impact': risk.impact,
         'control_effectiveness': risk.controlEffectiveness,

@@ -85,7 +85,7 @@ class Risk {
       'id': id,
       'title': title,
       'asset': asset,
-      'status': status.name,
+      'status': Risk.statusToString(status), // ← CAMBIO: usar snake_case
       'probability': probability,
       'impact': impact,
       'control_effectiveness': controlEffectiveness,
@@ -134,4 +134,19 @@ class Risk {
         return RiskStatus.open;
     }
   }
+
+  // ▼▼▼ NUEVA FUNCIÓN PARA CONVERTIR ENUM A SNAKE_CASE ▼▼▼
+  static String statusToString(RiskStatus status) {
+    switch (status) {
+      case RiskStatus.open:
+        return 'open';
+      case RiskStatus.inProgress:
+        return 'in_progress';
+      case RiskStatus.pendingReview:
+        return 'pending_review';
+      case RiskStatus.closed:
+        return 'closed';
+    }
+  }
+  // ▲▲▲ FIN DE LA NUEVA FUNCIÓN ▲▲▲
 }
