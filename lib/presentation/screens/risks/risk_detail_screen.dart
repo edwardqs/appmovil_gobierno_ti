@@ -63,14 +63,12 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
       {
         "text": '''
         Actúa como un Auditor Senior especializado en Gobierno de TI y Control Interno bajo el marco COBIT. 
-        Analiza el siguiente riesgo de TI de forma técnica, estructurada y concisa (máximo 3 párrafos). 
-        Tu análisis debe abordar con claridad los siguientes puntos:
-  
-        1. *Implicación del riesgo:* Explica cómo este riesgo afecta el logro de los objetivos de negocio y de TI, en relación con los principios y dominios del marco COBIT.  
-        2. *Evaluación del riesgo residual:* Determina si el riesgo residual es aceptable o no, considerando el nivel de riesgo inherente y la efectividad de los controles existentes.  
-        3. *Recomendaciones de mejora:* Propón acciones concretas y priorizadas para fortalecer el Gobierno de TI, mejorar la efectividad del control y reducir la exposición al riesgo.
-  
-        Sé directo, evita repeticiones o texto genérico. Fundamenta brevemente tus conclusiones en los conceptos de COBIT y buenas prácticas de gestión de riesgos.
+        Usaras el idioma español para responder. No uses ingles ni otro idioma.
+        Analiza el siguiente riesgo de TI de forma técnica, estructurada y concisa (máximo 3 párrafos).
+
+        Primero analiza lo que seria el nombre del riesgo, el activo afectado, la probabilidad, el impacto, el nivel de riesgo inherente, la efectividad del control y el riesgo residual estimado. Todo con las imagenes que se te proporcionan. Seguido del comentario del auditor si existe.
+        En base a lo anterior, dame soluciones prácticas y alineadas con COBIT para mitigar este riesgo. Pero no debe ser tanto texto, sino un análisis puntual y directo.
+
         Detalle del riesgo a analizar:
 
         ${riskDetails.trim()}
