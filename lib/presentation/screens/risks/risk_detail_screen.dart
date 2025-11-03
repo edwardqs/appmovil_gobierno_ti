@@ -2,6 +2,7 @@
 
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Para rootBundle
 import 'package:provider/provider.dart';
 import 'dart:convert'; // Necesario para codificación Base64 (imágenes)
 import 'package:http/http.dart' as http; // Necesario para llamadas a la API
@@ -472,64 +473,37 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
   // ▼▼▼ FUNCIÓN HELPER PARA CARGAR FUENTES UNICODE ▼▼▼
   Future<pw.Font> _getUnicodeFont({bool bold = false}) async {
     try {
-      // Obtener el directorio de soporte de la aplicación
-      Directory directory = await getApplicationSupportDirectory();
-      
-      // Buscar archivos de fuente en el directorio de cache de Google Fonts
-      String fontFamily = bold ? 'Roboto' : 'Roboto';
-      String fontWeight = bold ? 'Bold' : 'Regular';
-      
-      // Buscar el archivo de fuente en el directorio
-      List<FileSystemEntity> entityList = directory.listSync(recursive: true);
-      File? fontFile;
-      
-      for (FileSystemEntity entity in entityList) {
-        if (entity is File && 
-            entity.path.toLowerCase().contains('roboto') &&
-            entity.path.toLowerCase().contains(fontWeight.toLowerCase()) &&
-            entity.path.endsWith('.ttf')) {
-          fontFile = entity;
-          break;
-        }
-      }
-      
-      if (fontFile != null && fontFile.existsSync()) {
-        final fontBytes = await fontFile.readAsBytes();
-        return pw.Font.ttf(fontBytes.buffer.asByteData());
+      // Usar PdfGoogleFonts directamente para mejor soporte Unicode
+      if (bold) {
+        return await PdfGoogleFonts.robotoBold();
       } else {
-        // Si no se encuentra la fuente en cache, cargar Roboto desde Google Fonts
-        final textStyle = bold ? GoogleFonts.roboto(fontWeight: FontWeight.bold) : GoogleFonts.roboto();
-        
-        // Forzar la descarga de la fuente
-        await GoogleFonts.pendingFonts([textStyle]);
-        
-        // Buscar nuevamente después de la descarga
-        entityList = directory.listSync(recursive: true);
-        for (FileSystemEntity entity in entityList) {
-          if (entity is File && 
-              entity.path.toLowerCase().contains('roboto') &&
-              entity.path.toLowerCase().contains(fontWeight.toLowerCase()) &&
-              entity.path.endsWith('.ttf')) {
-            fontFile = entity;
-            break;
-          }
-        }
-        
-        if (fontFile != null && fontFile.existsSync()) {
-          final fontBytes = await fontFile.readAsBytes();
-          return pw.Font.ttf(fontBytes.buffer.asByteData());
-        }
+        return await PdfGoogleFonts.robotoRegular();
       }
     } catch (e) {
-      debugPrint('Error al cargar fuente Unicode: $e');
+      debugPrint('Error al cargar fuente Unicode desde Google Fonts: $e');
+      
+      // Fallback: intentar cargar desde assets si están disponibles
+      try {
+        final fontData = await rootBundle.load(
+          bold ? 'packages/google_fonts/fonts/Roboto-Bold.ttf' : 'packages/google_fonts/fonts/Roboto-Regular.ttf'
+        );
+        return pw.Font.ttf(fontData);
+      } catch (e2) {
+        debugPrint('Error al cargar fuente desde assets: $e2');
+        
+        // Último fallback: usar Times que tiene mejor soporte Unicode que Helvetica
+        return bold ? pw.Font.timesBold() : pw.Font.times();
+      }
     }
-    
-    // Fallback a fuente estándar si hay algún error
-    return pw.Font.helvetica();
   }
 
   // ▼▼▼ FUNCIÓN DE PDF MODIFICADA PARA USAR FUENTES UNICODE Y LAYOUT CORREGIDO ▼▼▼
   Future<void> _generateRiskPdf(Risk risk) async {
+    // Debug: Verificar si el análisis de IA está presente
+    print('🔍 [PDF_DEBUG] Generando PDF para riesgo: ${risk.id}');
+    print('🔍 [PDF_DEBUG] Análisis de IA presente: ${risk.aiAnalysis != null}');
+    print('🔍 [PDF_DEBUG] Contenido del análisis: ${risk.aiAnalysis?.substring(0, risk.aiAnalysis!.length > 100 ? 100 : risk.aiAnalysis!.length) ?? 'NULL'}...');
+    
     final doc = pw.Document();
 
     // Cargar fuentes Unicode
@@ -701,6 +675,10 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
     );
 
     // Segunda página - Análisis de IA (si existe)
+    print('🔍 [PDF_DEBUG] Verificando análisis de IA para segunda página...');
+    print('🔍 [PDF_DEBUG] risk.aiAnalysis es null: ${risk.aiAnalysis == null}');
+    print('🔍 [PDF_DEBUG] risk.aiAnalysis está vacío: ${risk.aiAnalysis?.isEmpty ?? true}');
+    
     if (risk.aiAnalysis?.isNotEmpty ?? false) {
       doc.addPage(
         pw.Page(
@@ -1119,7 +1097,12 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
                     ElevatedButton.icon(
                       icon: const Icon(Icons.picture_as_pdf_outlined),
                       label: const Text('Generar PDF'),
-                      onPressed: () => _generateRiskPdf(currentRisk),
+                      onPressed: () {
+                        print('🔍 [PDF_DEBUG] Botón PDF presionado');
+                        print('🔍 [PDF_DEBUG] currentRisk.id: ${currentRisk.id}');
+                        print('🔍 [PDF_DEBUG] currentRisk.aiAnalysis: ${currentRisk.aiAnalysis?.substring(0, (currentRisk.aiAnalysis?.length ?? 0) > 50 ? 50 : (currentRisk.aiAnalysis?.length ?? 0)) ?? 'NULL'}...');
+                        _generateRiskPdf(currentRisk);
+                      },
                       style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 48)),
                     ),
                   ],
