@@ -60,6 +60,25 @@ class UserModel {
   }
   // ▲▲▲ FIN DEL MÉTODO AÑADIDO ▲▲▲
 
+  // ▼▼▼ NUEVO CONSTRUCTOR DE FÁBRICA AÑADIDO ▼▼▼
+  /// Crea un UserModel desde un mapa (respuesta de Supabase)
+  factory UserModel.fromMap(Map<String, dynamic> map) {
+    return UserModel(
+      id: map['id'] ?? '',
+      name: map['name'] ?? 'Sin nombre',
+      email: map['email'] ?? 'Sin email',
+      role: roleFromString(map['role']),
+      biometricEnabled: map['biometric_enabled'] ?? false,
+      biometricToken: map['biometric_token'],
+      deviceId: map['device_id'],
+      dni: map['dni'],
+      phone: map['phone'],
+      address: map['address'],
+    );
+  }
+  // ▲▲▲ FIN DEL CONSTRUCTOR DE FÁBRICA ▲▲▲
+
+
   // Helper para convertir un string a un UserRole
   static UserRole roleFromString(String? roleString) {
     // Acepta nullable

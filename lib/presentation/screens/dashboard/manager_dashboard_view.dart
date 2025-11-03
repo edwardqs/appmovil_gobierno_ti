@@ -8,6 +8,9 @@ import '../../widgets/animations/fade_in_animation.dart';
 import '../../widgets/common/kpi_card.dart';
 import '../../../core/theme/app_colors.dart';
 import '../risks/risk_list_screen.dart';
+// ▼▼▼ IMPORTACIONES AÑADIDAS ▼▼▼
+import '../../../data/models/user_model.dart';
+import '../../../data/services/audit_service.dart';
 
 class ManagerDashboardView extends StatefulWidget {
   const ManagerDashboardView({super.key});
@@ -17,6 +20,10 @@ class ManagerDashboardView extends StatefulWidget {
 }
 
 class _ManagerDashboardViewState extends State<ManagerDashboardView> {
+  // ▼▼▼ LÓGICA AÑADIDA ▼▼▼
+  final AuditService _auditService = AuditService();
+  late Future<List<UserModel>> _auditorsFuture;
+
   @override
   void initState() {
     super.initState();
@@ -25,7 +32,24 @@ class _ManagerDashboardViewState extends State<ManagerDashboardView> {
       final riskProvider = Provider.of<RiskProvider>(context, listen: false);
       riskProvider.ensureRisksLoaded();
     });
+
+    // ▼▼▼ LÓGICA AÑADIDA ▼▼▼
+    _loadAuditors();
   }
+
+  void _loadAuditors() {
+    setState(() {
+      _auditorsFuture = _auditService.getAvailableAuditors();
+    });
+  }
+
+  Future<void> _refreshAllData() async {
+    // Refrescar riesgos
+    await Provider.of<RiskProvider>(context, listen: false).fetchRisks();
+    // Refrescar auditores
+    _loadAuditors();
+  }
+  // ▲▲▲ FIN DE LÓGICA AÑADIDA ▲▲▲
 
   @override
   Widget build(BuildContext context) {
@@ -33,13 +57,12 @@ class _ManagerDashboardViewState extends State<ManagerDashboardView> {
 
     final criticalRisks = riskProvider.risks.where((r) => r.riskLevel == 'Crítico').length;
     final highRisks = riskProvider.risks.where((r) => r.riskLevel == 'Alto').length;
-    // ▼▼▼ NUEVO KPI ▼▼▼
     final pendingReviewRisks = riskProvider.risks.where((r) => r.status == RiskStatus.pendingReview).length;
 
     return riskProvider.isLoading
         ? const Center(child: CircularProgressIndicator())
         : RefreshIndicator(
-      onRefresh: () => riskProvider.fetchRisks(),
+      onRefresh: _refreshAllData, // <-- MODIFICADO
       child: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
@@ -51,7 +74,7 @@ class _ManagerDashboardViewState extends State<ManagerDashboardView> {
             ),
           ),
           const SizedBox(height: 24),
-          // ▼▼▼ NUEVA TARJETA DE KPI AÑADIDA ▼▼▼
+          // ... (KPI Cards existentes sin cambios) ...
           FadeInAnimation(
             delay: 0.5,
             child: KpiCard(
@@ -60,8 +83,6 @@ class _ManagerDashboardViewState extends State<ManagerDashboardView> {
               icon: Icons.rate_review_outlined,
               color: Colors.orange,
               onTap: () {
-                // AÚN NO HEMOS CREADO ESTA VISTA, LO HAREMOS LUEGO
-                // Por ahora, podemos navegar a la lista completa
                 Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => const RiskListScreen(),
                 ));
@@ -95,6 +116,67 @@ class _ManagerDashboardViewState extends State<ManagerDashboardView> {
                 Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => const RiskListScreen(filter: RiskStatusFilter.high),
                 ));
+              },
+            ),
+          ),
+
+          // ▼▼▼ NUEVA SECCIÓN DE AUDITORES AÑADIDA ▼▼▼
+          const SizedBox(height: 32),
+          FadeInAnimation(
+            delay: 1.1,
+            child: Text(
+              'Auditores Disponibles (Senior)',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+          ),
+          const SizedBox(height: 16),
+          FadeInAnimation(
+            delay: 1.3,
+            child: FutureBuilder<List<UserModel>>(
+              future: _auditorsFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error al cargar auditores: ${snapshot.error}'));
+                }
+
+                final auditors = snapshot.data;
+
+                if (auditors == null || auditors.isEmpty) {
+                  return const Center(child: Text('No hay auditores senior disponibles.'));
+                }
+
+                // Usamos un Card para que la lista tenga un fondo
+                return Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: ListView.builder(
+                    shrinkWrap: true, // Para que quepa dentro del ListView principal
+                    physics: const NeverScrollableScrollPhysics(), // Desactiva scroll anidado
+                    itemCount: auditors.length,
+                    itemBuilder: (context, index) {
+                      final auditor = auditors[index];
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: AppColors.primary.withOpacity(0.1),
+                          child: Text(
+                            auditor.name.isNotEmpty ? auditor.name[0] : 'A',
+                            style: const TextStyle(color: AppColors.primary),
+                          ),
+                        ),
+                        title: Text(auditor.name),
+                        subtitle: Text(auditor.email),
+                        onTap: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Siguiente paso: Asignar a ${auditor.name}')),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                );
               },
             ),
           ),

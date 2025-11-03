@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/user_model.dart'; // <-- 1. IMPORTAR EL MODELO DE USUARIO
 
 class AuditService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -19,10 +20,10 @@ class AuditService {
 
   /// Registra un intento de login en la base de datos
   Future<void> logLoginAttempt(
-    String email, {
-    required bool success,
-    String? error,
-  }) async {
+      String email, {
+        required bool success,
+        String? error,
+      }) async {
     try {
       final currentUser = _supabase.auth.currentUser;
 
@@ -169,9 +170,9 @@ class AuditService {
           .select('action, created_at')
           .eq('user_id', userId)
           .gte(
-            'created_at',
-            DateTime.now().subtract(const Duration(days: 30)).toIso8601String(),
-          );
+        'created_at',
+        DateTime.now().subtract(const Duration(days: 30)).toIso8601String(),
+      );
 
       final logs = List<Map<String, dynamic>>.from(response);
 
@@ -192,4 +193,31 @@ class AuditService {
       throw Exception('Error al obtener estadísticas de actividad: $e');
     }
   }
+
+  // ▼▼▼ NUEVA FUNCIÓN AÑADIDA ▼▼▼
+  /// Obtiene todos los usuarios con el rol 'auditor_senior'
+  Future<List<UserModel>> getAvailableAuditors() async {
+    try {
+      print('🔄 [AuditService] Obteniendo auditores senior disponibles...');
+
+      final response = await _supabase
+          .from('users') // O 'profiles' si tu tabla pública se llama así
+          .select()
+          .eq('role', 'auditor_senior'); // Filtramos por el rol
+
+      // Mapeamos la respuesta a una lista de UserModel
+      // Usamos el factory `fromMap` que acabamos de añadir a UserModel
+      final auditors = (response as List)
+          .map((data) => UserModel.fromMap(data as Map<String, dynamic>))
+          .toList();
+
+      print('✅ [AuditService] ${auditors.length} auditores senior encontrados.');
+      return auditors;
+
+    } catch (e) {
+      print('❌ [AuditService] Error al obtener auditores disponibles: $e');
+      throw Exception('Error al obtener auditores disponibles: $e');
+    }
+  }
+// ▲▲▲ FIN DE LA FUNCIÓN AÑADIDA ▲▲▲
 }
