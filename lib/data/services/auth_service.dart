@@ -5,6 +5,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:io';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import '../models/user_model.dart';
 import 'biometric_service.dart';
 import 'device_service.dart';
@@ -382,73 +384,145 @@ class AuthService {
       print('📱 [LOGIN_BIOMETRIC] Credenciales encontradas para: $userEmail');
       print('🔄 [LOGIN_BIOMETRIC] Restaurando sesión desde refresh token...');
 
-      // ✅ CRÍTICO: Usar setSession() en lugar de refreshSession()
-      // setSession() RESTAURA una sesión completa desde un refresh token
-      // Funciona incluso si no hay sesión activa (después de logout)
-      // refreshSession() requiere una sesión activa y falla después de signOut()
-      final response = await _supabase.auth.setSession(refreshToken);
+      try {
+        var response = await _supabase.auth.setSession(refreshToken);
 
-      if (response.session == null || response.user == null) {
-        print('❌ [LOGIN_BIOMETRIC] No se pudo restaurar la sesión');
+        if (response.session == null || response.user == null) {
+           print('❌ [LOGIN_BIOMETRIC] No se pudo restaurar la sesión, intentando renovar...');
+           final renewed = await _renewBiometricCredentials();
+           if (!renewed) {
+             await _clearBiometricData();
+             throw BiometricAuthException(
+               'SESSION_EXPIRED',
+               'Sesión biométrica expirada. Inicia sesión manualmente.',
+             );
+           }
+           final newToken = await _secureStorage.read(key: _keyRefreshToken);
+           response = await _supabase.auth.setSession(newToken!);
+           if (response.session == null || response.user == null) {
+             await _clearBiometricData();
+             throw BiometricAuthException(
+               'SESSION_EXPIRED',
+               'Sesión biométrica expirada. Inicia sesión manualmente.',
+             );
+           }
+         }
+        
+        print('✅ [LOGIN_BIOMETRIC] Sesión restaurada exitosamente');
+
+        final isRegistered = await _deviceService.isDeviceRegistered(
+          response.user!.id,
+          deviceId,
+        );
+
+        if (!isRegistered) {
+          print('❌ [LOGIN_BIOMETRIC] Dispositivo no registrado o inactivo');
+          await _clearBiometricData();
+          throw BiometricAuthException(
+            'DEVICE_NOT_REGISTERED',
+            'Este dispositivo no está registrado. Inicia sesión manualmente.',
+          );
+        }
+
+        print('✅ [LOGIN_BIOMETRIC] Dispositivo verificado en user_devices');
+
+        await _deviceService.updateDeviceLastUsed(response.user!.id, deviceId);
+
+        // Actualizar el refresh token en el almacenamiento seguro con el nuevo token
+        await _secureStorage.write(
+          key: _keyRefreshToken,
+          value: response.session!.refreshToken,
+        );
+
+        print('✅ [LOGIN_BIOMETRIC] Token actualizado en almacenamiento seguro');
+
+        // Actualizar last_used_at en biometric_sessions
+        try {
+          await _supabase
+              .from('biometric_sessions')
+              .update({
+                'last_used_at': DateTime.now().toUtc().toIso8601String(),
+              })
+              .eq('user_id', response.user!.id)
+              .eq('device_id', deviceId)
+              .eq('is_active', true);
+          print('✅ [LOGIN_BIOMETRIC] last_used_at actualizado en biometric_sessions');
+        } catch (e) {
+          print('⚠️ [LOGIN_BIOMETRIC] Error al actualizar last_used_at: $e');
+        }
+
+        final userData = await _supabase
+            .from('users')
+            .select()
+            .eq('id', response.user!.id)
+            .single();
+
+        final user = UserModel(
+          id: response.user!.id,
+          name: userData['name'],
+          email: userData['email'],
+          role: UserModel.roleFromString(userData['role']),
+          biometricEnabled: true,
+          biometricToken: userData['biometric_token'],
+          deviceId: deviceId,
+          dni: userData['dni'],
+          phone: userData['phone'],
+          address: userData['address'],
+        );
+
+        print(
+          '✅ [LOGIN_BIOMETRIC] Login biométrico completado para: ${user.email}',
+        );
+        return user;
+      } catch (e) {
+        print('❌ [LOGIN_BIOMETRIC] Error al restaurar sesión: $e');
+        
+        if (e.toString().contains('Invalid Refresh Token') || 
+            e.toString().contains('refresh_token_not_found')) {
+          print('❌ [LOGIN_BIOMETRIC] Refresh token inválido, limpiando credenciales...');
+          
+          // Limpiar credenciales locales
+          await _clearBiometricData();
+          
+          // Marcar sesión biométrica como inactiva en la base de datos
+          try {
+            final deviceId = await _secureStorage.read(key: _keyDeviceId);
+            if (deviceId != null) {
+              await _supabase.from('biometric_sessions')
+                .update({
+                  'is_active': false,
+                  'disabled_at': DateTime.now().toIso8601String(),
+                })
+                .eq('device_id', deviceId)
+                .eq('is_active', true);
+              print('✅ [LOGIN_BIOMETRIC] Sesión biométrica marcada como inactiva en BD');
+            }
+          } catch (dbError) {
+            print('⚠️ [LOGIN_BIOMETRIC] Error al actualizar sesión en BD: $dbError');
+          }
+          
+          throw BiometricAuthException(
+            'CREDENTIALS_EXPIRED',
+            'Credenciales biométricas expiradas. Inicia sesión manualmente.',
+          );
+        }
+        
+        print('❌ [LOGIN_BIOMETRIC] Error crítico, limpiando credenciales');
         await _clearBiometricData();
         throw BiometricAuthException(
-          'SESSION_EXPIRED',
-          'Sesión biométrica expirada. Inicia sesión manualmente.',
+          'SESSION_ERROR',
+          'Error en sesión biométrica. Inicia sesión manualmente.',
         );
       }
-
-      print('✅ [LOGIN_BIOMETRIC] Sesión restaurada exitosamente');
-
-      // ✅ NUEVO: Verificar en tabla user_devices en lugar de users
-      final isRegistered = await _deviceService.isDeviceRegistered(
-        response.user!.id,
-        deviceId,
-      );
-
-      if (!isRegistered) {
-        print('❌ [LOGIN_BIOMETRIC] Dispositivo no registrado o inactivo');
-        await _clearBiometricData();
-        throw BiometricAuthException(
-          'DEVICE_NOT_REGISTERED',
-          'Este dispositivo no está registrado. Inicia sesión manualmente.',
-        );
-      }
-
-      print('✅ [LOGIN_BIOMETRIC] Dispositivo verificado en user_devices');
-
-      // ✅ NUEVO: Actualizar last_used_at del dispositivo
-      await _deviceService.updateDeviceLastUsed(response.user!.id, deviceId);
-
-      await _renewBiometricCredentials(response.session!);
-
-      final userData = await _supabase
-          .from('users')
-          .select()
-          .eq('id', response.user!.id)
-          .single();
-
-      final user = UserModel(
-        id: response.user!.id,
-        name: userData['name'],
-        email: userData['email'],
-        role: UserModel.roleFromString(userData['role']),
-        biometricEnabled: true, // ✅ El usuario tiene biometría en ESTE dispositivo
-        biometricToken: userData['biometric_token'],
-        deviceId: deviceId, // ✅ Usar el deviceId actual
-        dni: userData['dni'],
-        phone: userData['phone'],
-        address: userData['address'],
-      );
-
-      print(
-        '✅ [LOGIN_BIOMETRIC] Login biométrico completado para: ${user.email}',
-      );
-      return user;
     } on BiometricAuthException {
       rethrow;
     } catch (e) {
       print('❌ [LOGIN_BIOMETRIC] Error inesperado: $e');
-      await _clearBiometricData();
+      if (e.toString().contains('PlatformException') || 
+          e.toString().contains('BiometricException')) {
+        print('❌ [LOGIN_BIOMETRIC] Error de biometría, limpiando credenciales');
+        await _clearBiometricData();
+      }
       throw BiometricAuthException(
         'UNKNOWN_ERROR',
         'Error en autenticación biométrica: ${e.toString()}',
@@ -517,6 +591,38 @@ class AuthService {
         };
       }
 
+      // ✅ NUEVO: Registrar sesión biométrica en biometric_sessions
+      try {
+        // Primero desactivar cualquier sesión anterior del mismo dispositivo
+        await _supabase.from('biometric_sessions')
+          .update({
+            'is_active': false,
+            'disabled_at': DateTime.now().toIso8601String(),
+          })
+          .eq('device_id', deviceId)
+          .eq('is_active', true);
+        
+        // Crear nueva sesión biométrica
+        if (session.refreshToken != null) {
+          final sessionTokenHash = _hashToken(session.refreshToken!);
+          await _supabase.from('biometric_sessions').insert({
+            'user_id': user.id,
+            'device_id': deviceId,
+            'session_token_hash': sessionTokenHash,
+            'enabled_at': DateTime.now().toIso8601String(),
+            'last_used_at': DateTime.now().toIso8601String(),
+            'is_active': true,
+          });
+        } else {
+          print('⚠️ [BIOMETRIC] No hay refresh token para hashear');
+        }
+        
+        print('✅ [BIOMETRIC] Sesión biométrica registrada en biometric_sessions');
+      } catch (e) {
+        print('⚠️ [BIOMETRIC] Error al registrar sesión en biometric_sessions: $e');
+        // No fallar el proceso si hay error en esta tabla
+      }
+
       // ✅ MANTENER: Actualizar users.biometric_enabled para compatibilidad
       // (Este campo se usará como flag general, no para validación de dispositivo)
       await _supabase.from('users').update({
@@ -564,6 +670,20 @@ class AuthService {
         print('❌ [BIOMETRIC_DISABLE] Error al desactivar en user_devices: $e');
       }
 
+      // ✅ Marcar sesión biométrica como inactiva en biometric_sessions
+      try {
+        await _supabase.from('biometric_sessions')
+          .update({
+            'is_active': false,
+            'disabled_at': DateTime.now().toIso8601String(),
+          })
+          .eq('device_id', deviceId)
+          .eq('is_active', true);
+        print('✅ [BIOMETRIC_DISABLE] Sesión biométrica marcada como inactiva en biometric_sessions');
+      } catch (e) {
+        print('⚠️ [BIOMETRIC_DISABLE] Error al actualizar biometric_sessions: $e');
+      }
+
       // ✅ Limpiar credenciales locales
       await _clearBiometricData();
       print('✅ [BIOMETRIC_DISABLE] Credenciales locales limpiadas');
@@ -575,17 +695,12 @@ class AuthService {
 
         print('📱 [BIOMETRIC_DISABLE] Dispositivos activos restantes: ${activeDevices.length}');
 
-        // ✅ Solo actualizar biometric_enabled a false si no hay otros dispositivos
-        if (!hasOtherDevices) {
-          await _supabase.from('users').update({
-            'biometric_enabled': false,
-          }).eq('id', user.id);
-          print('✅ [BIOMETRIC_DISABLE] Flag biometric_enabled=false en users (no hay otros dispositivos)');
-        } else {
-          print(
-            'ℹ️ [BIOMETRIC_DISABLE] Hay ${activeDevices.length} dispositivos activos, manteniendo biometric_enabled=true',
-          );
-        }
+        // ✅ Siempre actualizar biometric_enabled basado en dispositivos activos
+        await _supabase.from('users').update({
+          'biometric_enabled': hasOtherDevices,
+        }).eq('id', user.id);
+        
+        print('✅ [BIOMETRIC_DISABLE] Flag biometric_enabled=${hasOtherDevices.toString()} en users');
       } catch (e) {
         print('⚠️ [BIOMETRIC_DISABLE] Error al verificar otros dispositivos: $e');
         // Por seguridad, actualizar biometric_enabled a false
@@ -639,48 +754,67 @@ class AuthService {
     }
   }
 
+  /// Obtiene la información del usuario guardada en las credenciales biométricas
+  Future<Map<String, String>?> getStoredBiometricUserInfo() async {
+    try {
+      print('🔍 [BIOMETRIC] Obteniendo info de usuario desde credenciales guardadas...');
+
+      final userEmail = await _secureStorage.read(key: _keyUserEmail);
+      final deviceId = await _secureStorage.read(key: _keyDeviceId);
+
+      if (userEmail == null || deviceId == null) {
+        print('🔍 [BIOMETRIC] No hay credenciales completas guardadas');
+        return null;
+      }
+
+      print('🔍 [BIOMETRIC] Usuario encontrado: $userEmail');
+      return {
+        'email': userEmail,
+        'deviceId': deviceId,
+      };
+    } catch (e) {
+      print('❌ [BIOMETRIC] Error al obtener info de usuario: $e');
+      return null;
+    }
+  }
+
   // ==========================================================================
   // MÉTODOS AUXILIARES PRIVADOS
   // ==========================================================================
 
-  Future<void> _renewBiometricCredentials(Session session) async {
+  /// Intenta renovar las credenciales biométricas guardadas
+  Future<bool> _renewBiometricCredentials() async {
     try {
-      print('🔄 [BIOMETRIC] Renovando credenciales biométricas...');
+      print('🔄 [BIOMETRIC] Intentando renovar credenciales biométricas...');
 
-      // Renovar tokens
+      final refreshToken = await _secureStorage.read(key: _keyRefreshToken);
+      final deviceId = await _secureStorage.read(key: _keyDeviceId);
+      final userEmail = await _secureStorage.read(key: _keyUserEmail);
+
+      if (refreshToken == null || deviceId == null || userEmail == null) {
+        print('❌ [BIOMETRIC] Credenciales incompletas para renovar');
+        return false;
+      }
+
+      // Intentar renovar el token con Supabase
+      final response = await _supabase.auth.refreshSession(refreshToken);
+      
+      if (response.session == null) {
+        print('❌ [BIOMETRIC] No se pudo renovar la sesión');
+        return false;
+      }
+
+      // Guardar las nuevas credenciales
       await _secureStorage.write(
         key: _keyRefreshToken,
-        value: session.refreshToken,
+        value: response.session!.refreshToken,
       );
-      await _secureStorage.write(
-        key: _keyAccessToken,
-        value: session.accessToken,
-      );
-
-      // ✅ IMPORTANTE: También guardar email y device_id si no existen
-      // Esto asegura que checkBiometricStatus() funcione correctamente
-      final existingEmail = await _secureStorage.read(key: _keyUserEmail);
-      if (existingEmail == null && session.user?.email != null) {
-        await _secureStorage.write(
-          key: _keyUserEmail,
-          value: session.user!.email!,
-        );
-        print('📧 [BIOMETRIC] Email guardado: ${session.user!.email}');
-      }
-
-      final existingDeviceId = await _secureStorage.read(key: _keyDeviceId);
-      if (existingDeviceId == null) {
-        final deviceId = await _getDeviceId();
-        await _secureStorage.write(
-          key: _keyDeviceId,
-          value: deviceId,
-        );
-        print('📱 [BIOMETRIC] Device ID guardado: $deviceId');
-      }
 
       print('✅ [BIOMETRIC] Credenciales renovadas exitosamente');
+      return true;
     } catch (e) {
       print('❌ [BIOMETRIC] Error al renovar credenciales: $e');
+      return false;
     }
   }
 
@@ -717,11 +851,25 @@ class AuthService {
         deviceId = 'unknown_platform';
       }
 
-      final user = _supabase.auth.currentUser;
-      return '${deviceId}_${user?.id ?? "unknown"}';
+      print('📱 [AUTH_SERVICE] Device ID obtenido: $deviceId');
+      return deviceId;
     } catch (e) {
       print('❌ Error al obtener Device ID: $e');
       return 'error_device_id';
+    }
+  }
+
+  /// Hashea un token para almacenarlo de forma segura en la base de datos
+  String _hashToken(String token) {
+    try {
+      // Usar SHA-256 para hashear el token
+      final bytes = utf8.encode(token);
+      final digest = sha256.convert(bytes);
+      return digest.toString();
+    } catch (e) {
+      print('⚠️ [AUTH_SERVICE] Error al hashear token: $e');
+      // Fallback: usar el token original (no recomendado pero evita errores)
+      return token;
     }
   }
 }

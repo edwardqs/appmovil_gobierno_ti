@@ -284,17 +284,17 @@ class _DevicesScreenState extends State<DevicesScreen> {
                             ),
                           ),
                           if (isCurrentDevice) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
+                             const SizedBox(width: 8),
+                             Container(
+                               padding: const EdgeInsets.symmetric(
+                                 horizontal: 8,
+                                 vertical: 2,
+                               ),
                               decoration: BoxDecoration(
-                                color: Colors.green.shade100,
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(color: Colors.green.shade300),
-                              ),
+                              color: Colors.green.shade100,
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: Colors.green.shade300),
+                            ),
                               child: Text(
                                 'ACTUAL',
                                 style: TextStyle(

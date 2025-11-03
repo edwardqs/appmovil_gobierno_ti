@@ -219,9 +219,12 @@ class AuthProvider extends ChangeNotifier {
   /// Habilita la biometría
   Future<Map<String, dynamic>> enableBiometrics() async {
     print('🔐 [AUTH_PROVIDER] Habilitando biometría...');
+    print('🔐 [AUTH_PROVIDER] Usuario actual: ${_user?.email ?? "no hay usuario"}');
 
     // ✅ CORREGIDO: Usa el método correcto del servicio
+    print('🔐 [AUTH_PROVIDER] Llamando a _authService.enableBiometricForCurrentUser()...');
     final result = await _authService.enableBiometricForCurrentUser();
+    print('🔐 [AUTH_PROVIDER] Resultado del servicio: $result');
 
     if (result['success'] == true) {
       print('✅ [AUTH_PROVIDER] Biometría habilitada exitosamente');
@@ -275,6 +278,12 @@ class AuthProvider extends ChangeNotifier {
 
     print('🔍 [AUTH_PROVIDER] Biometría habilitada: $_hasBiometricData');
     notifyListeners();
+  }
+
+  /// Obtiene la información del usuario biométrico almacenado
+  Future<Map<String, String>?> getStoredBiometricUserInfo() async {
+    print('🔍 [AUTH_PROVIDER] Obteniendo información biométrica almacenada...');
+    return await _authService.getStoredBiometricUserInfo();
   }
 
   // ==========================================================================

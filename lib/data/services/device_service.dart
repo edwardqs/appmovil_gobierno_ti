@@ -125,7 +125,7 @@ class DeviceService {
         );
       }
 
-      final result = response as Map<String, dynamic>;
+      final result = response;
       final success = result['success'] as bool? ?? false;
       final message = result['message'] as String? ?? 'Error desconocido';
 
