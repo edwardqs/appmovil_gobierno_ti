@@ -187,14 +187,15 @@ class AuthProvider extends ChangeNotifier {
 
       if (e.code == 'CREDENTIALS_NOT_FOUND') {
         errorMessage =
-            "Credenciales biométricas no encontradas. Inicia sesión manualmente.";
+        "Credenciales biométricas no encontradas. Inicia sesión manualmente.";
       } else if (e.code == 'SESSION_EXPIRED' ||
           e.code == 'CREDENTIALS_EXPIRED') {
+        // ✅ CORRECCIÓN: Mensaje actualizado para guiar al usuario
         errorMessage =
-            "Credenciales biométricas expiradas. Inicia sesión manualmente.";
+        "Sesión biométrica expirada. Inicia sesión manually para reactivarla.";
       } else if (e.code == 'DEVICE_MISMATCH') {
         errorMessage =
-            "Este dispositivo no coincide con el registrado. Inicia sesión manualmente.";
+        "Este dispositivo no coincide con el registrado. Inicia sesión manualmente.";
       } else if (e.code == 'AUTH_FAILED') {
         errorMessage = "Autenticación biométrica cancelada o fallida.";
       }
