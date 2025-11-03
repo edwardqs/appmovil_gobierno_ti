@@ -63,6 +63,7 @@ dependencies:
   # Utilidades
   uuid: ^4.2.2
   crypto: ^3.0.3
+  path_provider: ^2.1.2
 
 dev_dependencies:
   flutter_test:

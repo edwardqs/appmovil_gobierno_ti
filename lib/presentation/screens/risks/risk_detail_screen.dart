@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert'; // Necesario para codificación Base64 (imágenes)
 import 'package:http/http.dart' as http; // Necesario para llamadas a la API
+import 'package:google_fonts/google_fonts.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../../data/models/risk_model.dart';
 import '../../../data/models/user_model.dart';
 import '../../providers/auth_provider.dart';
@@ -305,7 +307,9 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
                 children: [
                   Icon(Icons.question_answer, color: Colors.blue),
                   const SizedBox(width: 8),
-                  const Text('Consulta del Auditor Senior'),
+                  Expanded(
+                    child: const Text('Consulta del Auditor Senior'),
+                  ),
                 ],
               ),
               content: SizedBox(
@@ -465,11 +469,74 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
     );
   }
 
-  // ▼▼▼ FUNCIÓN DE PDF MODIFICADA PARA USAR EL CAMPO PERSISTIDO ▼▼▼
+  // ▼▼▼ FUNCIÓN HELPER PARA CARGAR FUENTES UNICODE ▼▼▼
+  Future<pw.Font> _getUnicodeFont({bool bold = false}) async {
+    try {
+      // Obtener el directorio de soporte de la aplicación
+      Directory directory = await getApplicationSupportDirectory();
+      
+      // Buscar archivos de fuente en el directorio de cache de Google Fonts
+      String fontFamily = bold ? 'Roboto' : 'Roboto';
+      String fontWeight = bold ? 'Bold' : 'Regular';
+      
+      // Buscar el archivo de fuente en el directorio
+      List<FileSystemEntity> entityList = directory.listSync(recursive: true);
+      File? fontFile;
+      
+      for (FileSystemEntity entity in entityList) {
+        if (entity is File && 
+            entity.path.toLowerCase().contains('roboto') &&
+            entity.path.toLowerCase().contains(fontWeight.toLowerCase()) &&
+            entity.path.endsWith('.ttf')) {
+          fontFile = entity;
+          break;
+        }
+      }
+      
+      if (fontFile != null && fontFile.existsSync()) {
+        final fontBytes = await fontFile.readAsBytes();
+        return pw.Font.ttf(fontBytes.buffer.asByteData());
+      } else {
+        // Si no se encuentra la fuente en cache, cargar Roboto desde Google Fonts
+        final textStyle = bold ? GoogleFonts.roboto(fontWeight: FontWeight.bold) : GoogleFonts.roboto();
+        
+        // Forzar la descarga de la fuente
+        await GoogleFonts.pendingFonts([textStyle]);
+        
+        // Buscar nuevamente después de la descarga
+        entityList = directory.listSync(recursive: true);
+        for (FileSystemEntity entity in entityList) {
+          if (entity is File && 
+              entity.path.toLowerCase().contains('roboto') &&
+              entity.path.toLowerCase().contains(fontWeight.toLowerCase()) &&
+              entity.path.endsWith('.ttf')) {
+            fontFile = entity;
+            break;
+          }
+        }
+        
+        if (fontFile != null && fontFile.existsSync()) {
+          final fontBytes = await fontFile.readAsBytes();
+          return pw.Font.ttf(fontBytes.buffer.asByteData());
+        }
+      }
+    } catch (e) {
+      debugPrint('Error al cargar fuente Unicode: $e');
+    }
+    
+    // Fallback a fuente estándar si hay algún error
+    return pw.Font.helvetica();
+  }
+
+  // ▼▼▼ FUNCIÓN DE PDF MODIFICADA PARA USAR FUENTES UNICODE Y LAYOUT CORREGIDO ▼▼▼
   Future<void> _generateRiskPdf(Risk risk) async {
     final doc = pw.Document();
 
-    // Función para carga de imágenes y rowKV (mantenida de la implementación previa)
+    // Cargar fuentes Unicode
+    final regularFont = await _getUnicodeFont();
+    final boldFont = await _getUnicodeFont(bold: true);
+
+    // Función para carga de imágenes
     final pwImages = <pw.ImageProvider>[];
     for (final path in risk.imagePaths) {
       try {
@@ -489,6 +556,7 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
       }
     }
 
+    // Función helper para filas clave-valor
     pw.Widget rowKV(String k, String v) => pw.Container(
       margin: const pw.EdgeInsets.symmetric(vertical: 3),
       child: pw.Row(
@@ -500,153 +568,214 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
             child: pw.Text(
               k,
               style: pw.TextStyle(
-                fontWeight: pw.FontWeight.bold,
+                font: boldFont,
+                fontSize: 10,
                 color: PdfColors.blue800,
               ),
             ),
           ),
           pw.Expanded(
-            child: pw.Text(v, style: pw.TextStyle(color: PdfColors.black)),
+            child: pw.Text(
+              v, 
+              style: pw.TextStyle(
+                font: regularFont,
+                fontSize: 10,
+                color: PdfColors.black,
+              ),
+            ),
           ),
         ],
       ),
     );
 
+    // Crear contenido de la primera página
+    final firstPageContent = <pw.Widget>[
+      // CABECERA
+      pw.Container(
+        padding: const pw.EdgeInsets.all(12),
+        decoration: pw.BoxDecoration(
+          color: PdfColors.blue900,
+          borderRadius: pw.BorderRadius.circular(6),
+        ),
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(
+              "Reporte de Riesgo",
+              style: pw.TextStyle(
+                font: boldFont,
+                color: PdfColors.white,
+                fontSize: 18,
+              ),
+            ),
+            pw.Container(
+              padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: pw.BoxDecoration(
+                color: (risk.status == RiskStatus.closed)
+                    ? PdfColors.green600
+                    : PdfColors.orange600,
+                borderRadius: pw.BorderRadius.circular(4),
+              ),
+              child: pw.Text(
+                risk.statusText,
+                style: pw.TextStyle(
+                  font: regularFont,
+                  color: PdfColors.white,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      pw.SizedBox(height: 16),
+      
+      // DATOS PRINCIPALES
+      rowKV('ID:', risk.id),
+      rowKV('Título:', risk.title),
+      rowKV('Activo Afectado:', risk.asset),
+      rowKV('Asignado a:', risk.assignedUserName ?? 'Nadie'),
+      rowKV('Nivel de Riesgo:', risk.riskLevel),
+      rowKV('Probabilidad:', risk.probability.toString()),
+      rowKV('Impacto:', risk.impact.toString()),
+      rowKV('Efectividad del Control:', '${(risk.controlEffectiveness * 100).toStringAsFixed(0)}%'),
+      rowKV('Riesgo Inherente:', risk.inherentRisk.toString()),
+      rowKV('Riesgo Residual:', risk.residualRisk.toStringAsFixed(2)),
+    ];
+
+    // Agregar notas de revisión si existen
+    if (risk.reviewNotes?.isNotEmpty ?? false) {
+      firstPageContent.addAll([
+        pw.SizedBox(height: 12),
+        pw.Text(
+          'Notas de Revisión',
+          style: pw.TextStyle(
+            font: boldFont,
+            fontSize: 14,
+            color: PdfColors.orange800,
+          ),
+        ),
+        pw.SizedBox(height: 4),
+        pw.Text(
+          risk.reviewNotes!,
+          style: pw.TextStyle(
+            font: regularFont,
+            fontSize: 10,
+          ),
+        ),
+      ]);
+    }
+
+    // Agregar comentarios del auditor si existen
+    if (risk.comment?.isNotEmpty ?? false) {
+      firstPageContent.addAll([
+        pw.SizedBox(height: 12),
+        pw.Text(
+          'Comentarios del Auditor',
+          style: pw.TextStyle(
+            font: boldFont,
+            fontSize: 14,
+          ),
+        ),
+        pw.SizedBox(height: 4),
+        pw.Text(
+          risk.comment!,
+          style: pw.TextStyle(
+            font: regularFont,
+            fontSize: 10,
+          ),
+        ),
+      ]);
+    }
+
+    // Primera página
     doc.addPage(
-      pw.MultiPage(
+      pw.Page(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(24),
-        build: (context) => [
-          // CABECERA (mantenida)
-          pw.Container(
-            padding: const pw.EdgeInsets.all(12),
-            decoration: pw.BoxDecoration(
-              color: PdfColors.blue900,
-              borderRadius: pw.BorderRadius.circular(6),
-            ),
-            child: pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text(
-                  "Reporte de Riesgo",
-                  style: pw.TextStyle(
-                    color: PdfColors.white,
-                    fontSize: 18,
-                    fontWeight: pw.FontWeight.bold,
-                  ),
-                ),
-                pw.Container(
-                  padding:
-                  const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: pw.BoxDecoration(
-                    color: (risk.status == RiskStatus.closed)
-                        ? PdfColors.green600
-                        : PdfColors.orange600,
-                    borderRadius: pw.BorderRadius.circular(4),
-                  ),
-                  child: pw.Text(
-                    risk.statusText,
-                    style: const pw.TextStyle(color: PdfColors.white),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          pw.SizedBox(height: 16),
-
-          // DATOS PRINCIPALES (mantenidos)
-          rowKV('ID:', risk.id),
-          rowKV('Título:', risk.title),
-          rowKV('Activo Afectado:', risk.asset),
-          rowKV('Asignado a:', risk.assignedUserName ?? 'Nadie'),
-          rowKV('Nivel de Riesgo:', risk.riskLevel),
-          rowKV('Probabilidad:', risk.probability.toString()),
-          rowKV('Impacto:', risk.impact.toString()),
-          rowKV('Efectividad del Control:',
-              '${(risk.controlEffectiveness * 100).toStringAsFixed(0)}%'),
-          rowKV('Riesgo Inherente:', risk.inherentRisk.toString()),
-          rowKV('Riesgo Residual:', risk.residualRisk.toStringAsFixed(2)),
-
-          if (risk.reviewNotes?.isNotEmpty ?? false) ...[
-            pw.SizedBox(height: 12),
-            pw.Text(
-              'Notas de Revisión',
-              style: pw.TextStyle(
-                fontSize: 14,
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.orange800,
-              ),
-            ),
-            pw.SizedBox(height: 4),
-            pw.Text(risk.reviewNotes!),
-          ],
-
-          if (risk.comment?.isNotEmpty ?? false) ...[
-            pw.SizedBox(height: 12),
-            pw.Text(
-              'Comentarios del Auditor',
-              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
-            ),
-            pw.SizedBox(height: 4),
-            pw.Text(risk.comment!),
-          ],
-
-          // Reemplazo: Usar el análisis de la IA persistido (risk.aiAnalysis)
-          if (risk.aiAnalysis?.isNotEmpty ?? false) ...[
-            pw.SizedBox(height: 12),
-            pw.Text(
-              'Análisis de la IA',
-              style: pw.TextStyle(
-                fontSize: 14,
-                fontWeight: pw.FontWeight.bold,
-                color: PdfColors.indigo,
-              ),
-            ),
-            pw.SizedBox(height: 4),
-            pw.Text(
-              risk.aiAnalysis!, // Usa el campo persistido
-              textAlign: pw.TextAlign.justify,
-              style: pw.TextStyle(
-                fontSize: 11,
-                lineSpacing: 2,
-              ),
-            ),
-          ],
-
-          // Evidencia (mantenida)
-          if (pwImages.isNotEmpty) ...[
-            pw.SizedBox(height: 16),
-            pw.Text(
-              'Evidencia Fotográfica',
-              style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
-            ),
-            pw.SizedBox(height: 8),
-            pw.Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: pwImages
-                  .map(
-                    (img) => pw.Container(
-                  width: 120,
-                  height: 90,
-                  decoration: pw.BoxDecoration(
-                    border: pw.Border.all(color: PdfColors.grey300),
-                    borderRadius: pw.BorderRadius.circular(6),
-                  ),
-                  child: pw.ClipRRect(
-                    horizontalRadius: 6,
-                    verticalRadius: 6,
-                    child: pw.Image(img, fit: pw.BoxFit.cover),
-                  ),
-                ),
-              )
-                  .toList(),
-            ),
-          ],
-        ],
+        build: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: firstPageContent,
+        ),
       ),
     );
+
+    // Segunda página - Análisis de IA (si existe)
+    if (risk.aiAnalysis?.isNotEmpty ?? false) {
+      doc.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(24),
+          build: (context) => pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                'Análisis de la IA',
+                style: pw.TextStyle(
+                  font: boldFont,
+                  fontSize: 16,
+                  color: PdfColors.indigo,
+                ),
+              ),
+              pw.SizedBox(height: 8),
+              pw.Text(
+                risk.aiAnalysis!,
+                textAlign: pw.TextAlign.justify,
+                style: pw.TextStyle(
+                  font: regularFont,
+                  fontSize: 11,
+                  lineSpacing: 2,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Tercera página - Evidencia fotográfica (si existe)
+    if (pwImages.isNotEmpty) {
+      doc.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(24),
+          build: (context) => pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                'Evidencia Fotográfica',
+                style: pw.TextStyle(
+                  font: boldFont,
+                  fontSize: 16,
+                ),
+              ),
+              pw.SizedBox(height: 16),
+              pw.Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: pwImages
+                    .map(
+                      (img) => pw.Container(
+                    width: 120,
+                    height: 90,
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(color: PdfColors.grey300),
+                      borderRadius: pw.BorderRadius.circular(6),
+                    ),
+                    child: pw.ClipRRect(
+                      horizontalRadius: 6,
+                      verticalRadius: 6,
+                      child: pw.Image(img, fit: pw.BoxFit.cover),
+                    ),
+                  ),
+                )
+                    .toList(),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     await Printing.sharePdf(
       bytes: await doc.save(),
@@ -918,7 +1047,9 @@ class _RiskDetailScreenState extends State<RiskDetailScreen> {
                       children: [
                         Icon(Icons.question_answer, color: Colors.blue),
                         const SizedBox(width: 8),
-                        Text('Consultas del Auditor Senior', style: Theme.of(context).textTheme.titleLarge),
+                        Expanded(
+                          child: Text('Consultas del Auditor Senior', style: Theme.of(context).textTheme.titleLarge),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 16),
