@@ -513,23 +513,6 @@ class RiskService {
   // ELIMINACIÓN
   // ==========================================================================
 
-  /// Elimina un riesgo (solo para gerentes)
-  Future<void> deleteRisk(String riskId) async {
-    try {
-      print('🔄 [DELETE_RISK] Eliminando riesgo: $riskId');
-
-      await _supabase.from('risks').delete().eq('id', riskId);
-
-      print('✅ [DELETE_RISK] Riesgo eliminado exitosamente');
-    } catch (e) {
-      print('❌ [DELETE_RISK] Error: $e');
-      throw RiskServiceException(
-        'DELETE_RISK_ERROR',
-        'Error al eliminar el riesgo: ${e.toString()}',
-      );
-    }
-  }
-
   // ==========================================================================
   // ESTADÍSTICAS
   // ==========================================================================
@@ -615,6 +598,57 @@ class RiskService {
       throw RiskServiceException(
         'GET_COMMENTS_ERROR',
         'Error al cargar los comentarios: ${e.toString()}',
+      );
+    }
+  }
+
+  // ==========================================================================
+  // ELIMINACIÓN DE RIESGOS
+  // ==========================================================================
+
+  /// Elimina un riesgo de la base de datos (solo para gerentes)
+  Future<void> deleteRisk(String riskId) async {
+    try {
+      print('🗑️ [DELETE_RISK] Eliminando riesgo: $riskId');
+
+      // Verificar que el usuario actual sea gerente
+      final currentUser = _supabase.auth.currentUser;
+      if (currentUser == null) {
+        throw RiskServiceException(
+          'DELETE_RISK_UNAUTHORIZED',
+          'Usuario no autenticado',
+        );
+      }
+
+      // Obtener información del usuario para verificar rol
+      final userResponse = await _supabase
+          .from('users')
+          .select('role')
+          .eq('id', currentUser.id)
+          .single();
+
+      if (userResponse['role'] != 'gerente_auditoria') {
+        throw RiskServiceException(
+          'DELETE_RISK_FORBIDDEN',
+          'Solo los gerentes pueden eliminar riesgos',
+        );
+      }
+
+      // Eliminar el riesgo
+      await _supabase
+          .from('risks')
+          .delete()
+          .eq('id', riskId);
+
+      print('✅ [DELETE_RISK] Riesgo eliminado exitosamente: $riskId');
+    } catch (e) {
+      print('❌ [DELETE_RISK] Error: $e');
+      if (e is RiskServiceException) {
+        rethrow;
+      }
+      throw RiskServiceException(
+        'DELETE_RISK_ERROR',
+        'Error al eliminar el riesgo: ${e.toString()}',
       );
     }
   }

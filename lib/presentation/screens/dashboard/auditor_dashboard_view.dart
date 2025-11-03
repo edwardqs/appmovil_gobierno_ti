@@ -60,6 +60,8 @@ class _AuditorDashboardViewState extends State<AuditorDashboardView> {
             ...myAssignedRisks.map((risk) {
               return RiskListItem(
                 risk: risk,
+                currentUser: currentUser,
+                onDelete: null, // Los auditores no pueden eliminar riesgos
                 onTap: () {
                   Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => RiskDetailScreen(risk: risk),

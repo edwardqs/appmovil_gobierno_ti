@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../data/models/risk_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/risk_provider.dart';
 import '../../widgets/common/risk_list_item.dart';
 import 'risk_detail_screen.dart';
@@ -17,7 +18,55 @@ class RiskListScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     // Escucha los cambios en RiskProvider para obtener la lista de riesgos.
     final riskProvider = Provider.of<RiskProvider>(context);
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final currentUser = authProvider.currentUser;
     final allRisks = riskProvider.risks;
+
+    // Función para mostrar diálogo de confirmación y eliminar riesgo
+    Future<void> _showDeleteConfirmation(String riskId) async {
+      final risk = allRisks.firstWhere((r) => r.id == riskId);
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Confirmar Eliminación'),
+          content: Text('¿Estás seguro de que deseas eliminar el riesgo "${risk.title}"?\n\nEsta acción no se puede deshacer.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Eliminar'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed == true) {
+        try {
+          await riskProvider.deleteRisk(riskId);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Riesgo "${risk.title}" eliminado exitosamente'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } catch (e) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error al eliminar el riesgo: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      }
+    }
 
     // Lógica para filtrar la lista de riesgos y definir el título de la pantalla.
     final List<Risk> filteredRisks;
@@ -62,6 +111,8 @@ class RiskListScreen extends StatelessWidget {
           final risk = filteredRisks[index];
           return RiskListItem(
             risk: risk,
+            currentUser: currentUser,
+            onDelete: _showDeleteConfirmation,
             // Habilita la navegación a la pantalla de detalles al tocar.
             onTap: () {
               Navigator.of(context).push(MaterialPageRoute(

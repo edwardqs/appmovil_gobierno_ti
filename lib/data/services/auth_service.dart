@@ -226,45 +226,25 @@ class AuthService {
       print('✅ [REGISTER] Usuario creado en auth.users con ID: ${user.id}');
 
       try {
-        final profileResponse = await _supabase.rpc(
-          'register_user',
-          params: {
-            'p_user_id': user.id,
-            'p_email': email,
-            'p_name': name,
-            'p_role': role,
-            'p_dni': dni,
-            'p_phone': phone,
-            'p_address': address,
-          },
-        );
+        // Insertar directamente en la tabla users
+        await _supabase.from('users').insert({
+          'id': user.id,
+          'name': name,
+          'email': email,
+          'role': role,
+          'dni': dni,
+          'phone': phone,
+          'address': address,
+          'biometric_enabled': false,
+        });
 
-        if (profileResponse == null) {
-          throw UserProfileException(
-            'PROFILE_CREATION_FAILED',
-            'No se recibió respuesta al crear el perfil de usuario.',
-          );
-        }
-
-        final result = profileResponse as Map<String, dynamic>;
-        final success = result['success'] as bool? ?? false;
-        final message = result['message'] as String? ?? 'Error desconocido';
-
-        if (!success) {
-          print('❌ [REGISTER] Error al crear perfil: $message');
-          try {
-            await _supabase.auth.signOut(scope: SignOutScope.local);
-          } catch (_) {}
-          throw UserProfileException('PROFILE_CREATION_FAILED', message);
-        }
-
-        print('✅ [REGISTER] Perfil creado exitosamente');
+        print('✅ [REGISTER] Perfil creado exitosamente en tabla users');
 
         return UserModel(
           id: user.id,
           name: name,
           email: email,
-          role: UserModel.roleFromString(result['role'] as String? ?? role),
+          role: UserModel.roleFromString(role),
           biometricEnabled: false,
           dni: dni,
           phone: phone,

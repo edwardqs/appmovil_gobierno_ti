@@ -158,4 +158,22 @@ class RiskProvider with ChangeNotifier {
       return []; // Retornar lista vacía en caso de error
     }
   }
+
+  // ▼▼▼ NUEVO MÉTODO PARA ELIMINACIÓN DE RIESGOS ▼▼▼
+  /// Elimina un riesgo (solo para gerentes)
+  Future<void> deleteRisk(String riskId) async {
+    try {
+      // Eliminar del servicio (base de datos)
+      await _riskService.deleteRisk(riskId);
+      
+      // Eliminar del estado local
+      _risks.removeWhere((risk) => risk.id == riskId);
+      
+      // Notificar a los listeners
+      notifyListeners();
+    } catch (e) {
+      print('Error deleting risk: $e');
+      rethrow; // Re-lanzar el error para que la UI pueda manejarlo
+    }
+  }
 }
