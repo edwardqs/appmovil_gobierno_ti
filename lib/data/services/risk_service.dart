@@ -261,6 +261,38 @@ class RiskService {
     }
   }
 
+  /// Obtiene un riesgo específico por su ID
+  Future<Risk?> getRiskById(String riskId) async {
+    try {
+      print('🔍 [GET_RISK_BY_ID] Obteniendo riesgo: $riskId');
+
+      final response = await _supabase
+          .from('risks')
+          .select('*')
+          .eq('id', riskId)
+          .maybeSingle();
+
+      if (response == null) {
+        print('⚠️ [GET_RISK_BY_ID] Riesgo no encontrado: $riskId');
+        return null;
+      }
+
+      final risk = Risk.fromJson(response);
+      print('✅ [GET_RISK_BY_ID] Riesgo obtenido: ${risk.title}');
+      print(
+        '🔍 [GET_RISK_BY_ID] AI Analysis presente: ${risk.aiAnalysis != null ? "Sí (${risk.aiAnalysis!.length} chars)" : "No"}',
+      );
+
+      return risk;
+    } catch (e) {
+      print('❌ [GET_RISK_BY_ID] Error: $e');
+      throw RiskServiceException(
+        'FETCH_RISK_BY_ID_ERROR',
+        'Error al obtener el riesgo: ${e.toString()}',
+      );
+    }
+  }
+
   // ==========================================================================
   // CREACIÓN Y ACTUALIZACIÓN DE RIESGOS
   // ==========================================================================
@@ -309,7 +341,9 @@ class RiskService {
         'id': riskId,
         'title': newRisk.title,
         'asset': newRisk.asset,
-        'status': Risk.statusToString(newRisk.status), // ← CAMBIO: usar snake_case
+        'status': Risk.statusToString(
+          newRisk.status,
+        ), // ← CAMBIO: usar snake_case
         'probability': newRisk.probability,
         'impact': newRisk.impact,
         'control_effectiveness': newRisk.controlEffectiveness,
