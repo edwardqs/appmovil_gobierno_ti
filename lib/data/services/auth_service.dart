@@ -218,13 +218,24 @@ class AuthService {
     try {
       print('📝 [REGISTER] Iniciando registro de usuario...');
 
+      // ✅ CORRECCIÓN: Convertir el rol a snake_case antes de enviarlo
+      final roleSnakeCase = role == 'auditor_junior'
+          ? 'auditor_junior'
+          : role == 'auditor_senior'
+          ? 'auditor_senior'
+          : role == 'gerente_auditoria'
+          ? 'gerente_auditoria'
+          : 'auditor_junior'; // Valor por defecto
+
+      print('📝 [REGISTER] Rol a enviar: $roleSnakeCase');
+
       // ✅ CORRECCIÓN: Enviar datos adicionales en 'data'
       final response = await _supabase.auth.signUp(
         email: email,
         password: password,
         data: {
           'name': name,
-          'role': role,
+          'role': roleSnakeCase, // ✅ Usar el rol convertido
           'dni': dni,
           'phone': phone,
           'address': address,
