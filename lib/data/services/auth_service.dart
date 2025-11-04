@@ -140,7 +140,9 @@ class AuthService {
       );
 
       if (user.biometricEnabled && response.session != null) {
-        print('🔄 [LOGIN_EMAIL] Usuario tiene biometría habilitada (Opción B).');
+        print(
+          '🔄 [LOGIN_EMAIL] Usuario tiene biometría habilitada (Opción B).',
+        );
 
         final deviceId = await _getDeviceId();
         try {
@@ -157,7 +159,9 @@ class AuthService {
             await _deviceService.updateDeviceLastUsed(user.id, deviceId);
           }
         } catch (e) {
-          print('⚠️ [LOGIN_EMAIL] Error al verificar/registrar dispositivo: $e');
+          print(
+            '⚠️ [LOGIN_EMAIL] Error al verificar/registrar dispositivo: $e',
+          );
         }
       }
 
@@ -179,7 +183,9 @@ class AuthService {
 
       if (hasBiometric) {
         print('🔐 [LOGOUT] Usuario tiene biometría (Opción B) habilitada');
-        print('🔐 [LOGOUT] Limpiando sesión local SIN invalidar tokens en servidor');
+        print(
+          '🔐 [LOGOUT] Limpiando sesión local SIN invalidar tokens en servidor',
+        );
 
         try {
           await _supabase.auth.signOut(scope: SignOutScope.local);
@@ -198,6 +204,8 @@ class AuthService {
     }
   }
 
+  // lib/data/services/auth_service.dart
+
   Future<UserModel> registerUser({
     required String email,
     required String password,
@@ -210,9 +218,17 @@ class AuthService {
     try {
       print('📝 [REGISTER] Iniciando registro de usuario...');
 
+      // ✅ CORRECCIÓN: Enviar datos adicionales en 'data'
       final response = await _supabase.auth.signUp(
         email: email,
         password: password,
+        data: {
+          'name': name,
+          'role': role,
+          'dni': dni,
+          'phone': phone,
+          'address': address,
+        },
       );
 
       final user = response.user;
@@ -225,42 +241,28 @@ class AuthService {
 
       print('✅ [REGISTER] Usuario creado en auth.users con ID: ${user.id}');
 
-      try {
-        // Insertar directamente en la tabla users
-        await _supabase.from('users').insert({
-          'id': user.id,
-          'name': name,
-          'email': email,
-          'role': role,
-          'dni': dni,
-          'phone': phone,
-          'address': address,
-          'biometric_enabled': false,
-        });
+      // ✅ El trigger de Supabase ya creó el registro en public.users
+      // Solo necesitamos obtener los datos finales
+      await Future.delayed(const Duration(milliseconds: 500)); // Pequeña espera
 
-        print('✅ [REGISTER] Perfil creado exitosamente en tabla users');
+      final userData = await _supabase
+          .from('users')
+          .select()
+          .eq('id', user.id)
+          .single();
 
-        return UserModel(
-          id: user.id,
-          name: name,
-          email: email,
-          role: UserModel.roleFromString(role),
-          biometricEnabled: false,
-          dni: dni,
-          phone: phone,
-          address: address,
-        );
-      } catch (e) {
-        print('❌ [REGISTER] Error al crear perfil: $e');
-        try {
-          await _supabase.auth.signOut(scope: SignOutScope.local);
-        } catch (_) {}
-        if (e is UserProfileException) rethrow;
-        throw UserProfileException(
-          'PROFILE_CREATION_FAILED',
-          'Error al crear el perfil de usuario: ${e.toString()}',
-        );
-      }
+      print('✅ [REGISTER] Perfil obtenido desde tabla users');
+
+      return UserModel(
+        id: user.id,
+        name: userData['name'],
+        email: userData['email'],
+        role: UserModel.roleFromString(userData['role']),
+        biometricEnabled: false,
+        dni: userData['dni'],
+        phone: userData['phone'],
+        address: userData['address'],
+      );
     } on AuthException catch (e) {
       print('❌ [REGISTER] Error AuthException: ${e.message}');
 
@@ -281,9 +283,6 @@ class AuthService {
       throw AuthServiceException('AUTH_ERROR', userMessage);
     } catch (e) {
       print('❌ [REGISTER] Error general: $e');
-      if (e is AuthServiceException || e is UserProfileException) {
-        rethrow;
-      }
       throw AuthServiceException(
         'UNKNOWN_ERROR',
         'Error desconocido durante el registro: ${e.toString()}',
@@ -320,7 +319,9 @@ class AuthService {
       final userEmail = await _secureStorage.read(key: _keyUserEmail);
 
       if (biometricToken == null || deviceId == null) {
-        print('❌ [LOGIN_BIOMETRIC_B] Credenciales personalizadas no encontradas');
+        print(
+          '❌ [LOGIN_BIOMETRIC_B] Credenciales personalizadas no encontradas',
+        );
         await _clearBiometricData();
         throw BiometricAuthException(
           'CREDENTIALS_NOT_FOUND',
@@ -329,19 +330,20 @@ class AuthService {
       }
 
       print('📱 [LOGIN_BIOMETRIC_B] Credenciales encontradas para: $userEmail');
-      print('🔄 [LOGIN_BIOMETRIC_B] Llamando a Edge Function "dynamic-responder"...');
+      print(
+        '🔄 [LOGIN_BIOMETRIC_B] Llamando a Edge Function "dynamic-responder"...',
+      );
 
       try {
         final response = await _supabase.functions.invoke(
           'dynamic-responder', // El nombre de tu Edge Function
-          body: {
-            'token': biometricToken,
-            'deviceId': deviceId,
-          },
+          body: {'token': biometricToken, 'deviceId': deviceId},
         );
 
         if (response.data == null || response.data['session'] == null) {
-          print('❌ [LOGIN_BIOMETRIC_B] La Edge Function no devolvió una sesión');
+          print(
+            '❌ [LOGIN_BIOMETRIC_B] La Edge Function no devolvió una sesión',
+          );
           throw BiometricAuthException(
             'SESSION_ERROR',
             'Error del servidor de biometría. Inicia sesión manualmente.',
@@ -370,18 +372,22 @@ class AuthService {
 
         await _supabase.auth.setSession(session.refreshToken!);
 
-        print('✅ [LOGIN_BIOMETRIC_B] Sesión restaurada exitosamente desde Edge Function');
+        print(
+          '✅ [LOGIN_BIOMETRIC_B] Sesión restaurada exitosamente desde Edge Function',
+        );
 
         try {
           await _supabase
               .from('biometric_sessions')
               .update({
-            'last_used_at': DateTime.now().toUtc().toIso8601String(),
-          })
+                'last_used_at': DateTime.now().toUtc().toIso8601String(),
+              })
               .eq('user_id', session.user.id)
               .eq('device_id', deviceId)
               .eq('is_active', true);
-          print('✅ [LOGIN_BIOMETRIC_B] last_used_at actualizado en biometric_sessions');
+          print(
+            '✅ [LOGIN_BIOMETRIC_B] last_used_at actualizado en biometric_sessions',
+          );
         } catch (e) {
           print('⚠️ [LOGIN_BIOMETRIC_B] Error al actualizar last_used_at: $e');
         }
@@ -409,7 +415,6 @@ class AuthService {
           '✅ [LOGIN_BIOMETRIC_B] Login biométrico completado para: ${user.email}',
         );
         return user;
-
       } catch (e) {
         print('❌ [LOGIN_BIOMETRIC_B] Error al llamar a Edge Function: $e');
         if (e is FunctionException) {
@@ -440,7 +445,9 @@ class AuthService {
 
   Future<Map<String, dynamic>> enableBiometricForCurrentUser() async {
     try {
-      print('🔐 [BIOMETRIC_B] Iniciando habilitación de biometría (Opción B)...');
+      print(
+        '🔐 [BIOMETRIC_B] Iniciando habilitación de biometría (Opción B)...',
+      );
 
       final session = _supabase.auth.currentSession;
       final user = _supabase.auth.currentUser;
@@ -470,7 +477,9 @@ class AuthService {
       print('✅ [BIOMETRIC_B] Autenticación biométrica exitosa');
 
       final deviceId = await _getDeviceId();
-      final platform = Platform.isAndroid ? 'android' : (Platform.isIOS ? 'ios' : 'unknown');
+      final platform = Platform.isAndroid
+          ? 'android'
+          : (Platform.isIOS ? 'ios' : 'unknown');
       print('📱 [BIOMETRIC_B] Device ID: $deviceId, Platform: $platform');
 
       // ✅ PASO 1: Generar un token biométrico personalizado
@@ -483,12 +492,18 @@ class AuthService {
       await _secureStorage.write(key: _keyBiometricToken, value: secureToken);
       await _secureStorage.write(key: _keyUserEmail, value: user.email!);
       await _secureStorage.write(key: _keyDeviceId, value: deviceId);
-      print('💾 [BIOMETRIC_B] Token personalizado guardado en almacenamiento seguro');
+      print(
+        '💾 [BIOMETRIC_B] Token personalizado guardado en almacenamiento seguro',
+      );
 
       // ✅ PASO 4: Registrar el HASH en la nueva tabla biometric_sessions
       try {
-        await _supabase.from('biometric_sessions')
-            .update({'is_active': false, 'disabled_at': DateTime.now().toIso8601String()})
+        await _supabase
+            .from('biometric_sessions')
+            .update({
+              'is_active': false,
+              'disabled_at': DateTime.now().toIso8601String(),
+            })
             .eq('user_id', user.id)
             .eq('device_id', deviceId)
             .eq('is_active', true);
@@ -503,12 +518,16 @@ class AuthService {
           'last_used_at': DateTime.now().toIso8601String(),
           'is_active': true,
         });
-        print('✅ [BIOMETRIC_B] Hash de token personalizado registrado en biometric_sessions');
-
+        print(
+          '✅ [BIOMETRIC_B] Hash de token personalizado registrado en biometric_sessions',
+        );
       } catch (e) {
         print('❌ [BIOMETRIC_B] Error al registrar hash en BD: $e');
         await _clearBiometricData(); // Limpiar si falla el registro en BD
-        return {'success': false, 'message': 'Error al registrar en servidor: ${e.toString()}'};
+        return {
+          'success': false,
+          'message': 'Error al registrar en servidor: ${e.toString()}',
+        };
       }
 
       // ✅ PASO 5: Registrar dispositivo en user_devices (tu lógica actual)
@@ -525,9 +544,10 @@ class AuthService {
       }
 
       // ✅ PASO 6: Actualizar flag en users (tu lógica actual)
-      await _supabase.from('users').update({
-        'biometric_enabled': true,
-      }).eq('id', user.id);
+      await _supabase
+          .from('users')
+          .update({'biometric_enabled': true})
+          .eq('id', user.id);
       print('✅ [BIOMETRIC_B] Flag biometric_enabled actualizado en users');
 
       final prefs = await SharedPreferences.getInstance();
@@ -535,7 +555,6 @@ class AuthService {
 
       print('✅ [BIOMETRIC_B] Biometría (Opción B) habilitada exitosamente');
       return {'success': true, 'message': 'Biometría habilitada exitosamente'};
-
     } catch (e) {
       print('❌ [BIOMETRIC_B] Error al habilitar biometría: $e');
       return {
@@ -559,29 +578,43 @@ class AuthService {
 
       // ✅ Desactivar en biometric_sessions
       try {
-        await _supabase.from('biometric_sessions')
+        await _supabase
+            .from('biometric_sessions')
             .update({
-          'is_active': false,
-          'disabled_at': DateTime.now().toIso8601String(),
-        })
+              'is_active': false,
+              'disabled_at': DateTime.now().toIso8601String(),
+            })
             .eq('user_id', user.id)
             .eq('device_id', deviceId)
             .eq('is_active', true);
-        print('✅ [BIOMETRIC_DISABLE_B] Sesión biométrica marcada como inactiva');
+        print(
+          '✅ [BIOMETRIC_DISABLE_B] Sesión biométrica marcada como inactiva',
+        );
       } catch (e) {
-        print('⚠️ [BIOMETRIC_DISABLE_B] Error al actualizar biometric_sessions: $e');
+        print(
+          '⚠️ [BIOMETRIC_DISABLE_B] Error al actualizar biometric_sessions: $e',
+        );
       }
 
       // ✅ Desactivar en user_devices
       try {
-        final deactivated = await _deviceService.deactivateDevice(user.id, deviceId);
+        final deactivated = await _deviceService.deactivateDevice(
+          user.id,
+          deviceId,
+        );
         if (deactivated) {
-          print('✅ [BIOMETRIC_DISABLE_B] Dispositivo desactivado en user_devices');
+          print(
+            '✅ [BIOMETRIC_DISABLE_B] Dispositivo desactivado en user_devices',
+          );
         } else {
-          print('⚠️ [BIOMETRIC_DISABLE_B] No se pudo desactivar dispositivo en BD');
+          print(
+            '⚠️ [BIOMETRIC_DISABLE_B] No se pudo desactivar dispositivo en BD',
+          );
         }
       } catch (e) {
-        print('❌ [BIOMETRIC_DISABLE_B] Error al desactivar en user_devices: $e');
+        print(
+          '❌ [BIOMETRIC_DISABLE_B] Error al desactivar en user_devices: $e',
+        );
       }
 
       // ✅ Limpiar credenciales locales
@@ -593,18 +626,26 @@ class AuthService {
         final activeDevices = await _deviceService.getActiveDevices(user.id);
         final hasOtherDevices = activeDevices.isNotEmpty;
 
-        print('📱 [BIOMETRIC_DISABLE_B] Dispositivos activos restantes: ${activeDevices.length}');
+        print(
+          '📱 [BIOMETRIC_DISABLE_B] Dispositivos activos restantes: ${activeDevices.length}',
+        );
 
-        await _supabase.from('users').update({
-          'biometric_enabled': hasOtherDevices,
-        }).eq('id', user.id);
+        await _supabase
+            .from('users')
+            .update({'biometric_enabled': hasOtherDevices})
+            .eq('id', user.id);
 
-        print('✅ [BIOMETRIC_DISABLE_B] Flag biometric_enabled=${hasOtherDevices.toString()} en users');
+        print(
+          '✅ [BIOMETRIC_DISABLE_B] Flag biometric_enabled=${hasOtherDevices.toString()} en users',
+        );
       } catch (e) {
-        print('⚠️ [BIOMETRIC_DISABLE_B] Error al verificar otros dispositivos: $e');
-        await _supabase.from('users').update({
-          'biometric_enabled': false,
-        }).eq('id', user.id);
+        print(
+          '⚠️ [BIOMETRIC_DISABLE_B] Error al verificar otros dispositivos: $e',
+        );
+        await _supabase
+            .from('users')
+            .update({'biometric_enabled': false})
+            .eq('id', user.id);
       }
 
       print('✅ [BIOMETRIC_DISABLE_B] Biometría deshabilitada exitosamente');
@@ -636,11 +677,12 @@ class AuthService {
       final deviceId = await _secureStorage.read(key: _keyDeviceId);
       final userEmail = await _secureStorage.read(key: _keyUserEmail);
 
-      final hasCredentials = biometricToken != null &&
-          deviceId != null &&
-          userEmail != null;
+      final hasCredentials =
+          biometricToken != null && deviceId != null && userEmail != null;
 
-      print('🔍 [BIOMETRIC_B] Credenciales personalizadas encontradas: $hasCredentials');
+      print(
+        '🔍 [BIOMETRIC_B] Credenciales personalizadas encontradas: $hasCredentials',
+      );
       print('🔍 [BIOMETRIC_B] Email: $userEmail');
 
       if (hasCredentials) {
@@ -657,7 +699,9 @@ class AuthService {
 
   Future<Map<String, String>?> getStoredBiometricUserInfo() async {
     try {
-      print('🔍 [BIOMETRIC_B] Obteniendo info de usuario desde credenciales guardadas...');
+      print(
+        '🔍 [BIOMETRIC_B] Obteniendo info de usuario desde credenciales guardadas...',
+      );
 
       final userEmail = await _secureStorage.read(key: _keyUserEmail);
       final deviceId = await _secureStorage.read(key: _keyDeviceId);
@@ -668,10 +712,7 @@ class AuthService {
       }
 
       print('🔍 [BIOMETRIC_B] Usuario encontrado: $userEmail');
-      return {
-        'email': userEmail,
-        'deviceId': deviceId,
-      };
+      return {'email': userEmail, 'deviceId': deviceId};
     } catch (e) {
       print('❌ [BIOMETRIC_B] Error al obtener info de usuario: $e');
       return null;
